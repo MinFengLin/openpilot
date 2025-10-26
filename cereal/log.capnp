@@ -865,6 +865,7 @@ struct ControlsState @0x97ff69c53601abf1 {
   curvature @37 :Float32;  # path curvature from vehicle model
   desiredCurvature @61 :Float32;  # lag adjusted curvatures used by lateral controllers
   forceDecel @51 :Bool;
+  pitchRad   @67 :Float32;
 
   lateralControlState :union {
     pidState @53 :LateralPIDState;

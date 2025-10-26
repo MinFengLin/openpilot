@@ -128,6 +128,12 @@ void HudRendererSP::updateState(const UIState &s) {
   steerOverride = car_state.getSteeringPressed();
   lead_d_rel = radar_state.getLeadOne().getDRel();
   lead_v_rel = radar_state.getLeadOne().getVRel();
+  auto orientationNED = car_control.getOrientationNED();
+  if (orientationNED.size() > 1) {
+    pitch_rad = orientationNED[1];
+  } else {
+    pitch_rad = 0.0;
+  }
   lead_status = radar_state.getLeadOne().getStatus();
   torqueLateral = steerControlType == cereal::CarParams::SteerControlType::TORQUE;
   angleSteers = car_state.getSteeringAngleDeg();
@@ -383,6 +389,10 @@ void HudRendererSP::drawRightDevUI(QPainter &p, int x, int y) {
 
   UiElement actuatorsOutputLateralElement = DeveloperUi::getActuatorsOutputLateral(steerControlType, actuators, desiredCurvature, vEgo, roll, latActive, steerOverride);
   rh += drawRightDevUIElement(p, x, ry, actuatorsOutputLateralElement.value, actuatorsOutputLateralElement.label, actuatorsOutputLateralElement.units, actuatorsOutputLateralElement.color);
+  ry = y + rh;
+
+  UiElement pitchElement = DeveloperUi::getPitch(true, pitch_rad);
+  rh += drawRightDevUIElement(p, x, ry, pitchElement.value, pitchElement.label, pitchElement.units, pitchElement.color);
   ry = y + rh;
 
   UiElement actualLateralAccelElement = DeveloperUi::getActualLateralAccel(curvature, vEgo, roll, latActive, steerOverride);
