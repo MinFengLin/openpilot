@@ -318,6 +318,12 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
       drawRightDevUI(p, surface_rect.right() - 184 - UI_BORDER_SIZE * 2, UI_BORDER_SIZE * 2 + rect_right.height());
     }
 
+    // Left Dev UI
+    if (devUiInfo != 0) {
+      QRect rect_left(UI_BORDER_SIZE * 1.5, UI_BORDER_SIZE * 2, 184, 170);
+      drawLeftDevUI(p, surface_rect.left() + UI_BORDER_SIZE * 2, UI_BORDER_SIZE * 2 + rect_left.height());
+    }
+
     // Speed Limit
     bool showSpeedLimit;
     bool speed_limit_assist_pre_active_pulse = pulseElement(speedLimitAssistFrame);
@@ -451,6 +457,41 @@ void HudRendererSP::drawSmartCruiseControlOnroadIcon(QPainter &p, const QRect &s
   p.drawPath(boxPath);
 }
 
+int HudRendererSP::drawLeftDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color) {
+
+  p.setFont(InterFont(28, QFont::Bold));
+  x += 92;
+  y += 80;
+  drawText(p, x, y, label);
+
+  p.setFont(InterFont(30 * 2, QFont::Bold));
+  y += 65;
+  drawText(p, x, y, value, color);
+
+  p.setFont(InterFont(28, QFont::Bold));
+
+  if (units.length() > 0) {
+    p.save();
+    x += 120;
+    y -= 25;
+    p.translate(x, y);
+    p.rotate(-90);
+    drawText(p, 0, 0, units);
+    p.restore();
+  }
+
+  return 130;
+}
+
+void HudRendererSP::drawLeftDevUI(QPainter &p, int x, int y) {
+  int rh = 5;
+  int ry = y;
+
+  UiElement pitchElement = DeveloperUi::getPitch(true, pitch_rad);
+  rh += drawLeftDevUIElement(p, x, ry, pitchElement.value, pitchElement.label, pitchElement.units, pitchElement.color);
+  ry = y + rh;
+}
+
 int HudRendererSP::drawRightDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color) {
 
   p.setFont(InterFont(28, QFont::Bold));
@@ -495,10 +536,6 @@ void HudRendererSP::drawRightDevUI(QPainter &p, int x, int y) {
 
   UiElement actuatorsOutputLateralElement = DeveloperUi::getActuatorsOutputLateral(steerControlType, actuators, desiredCurvature, vEgo, roll, latActive, steerOverride);
   rh += drawRightDevUIElement(p, x, ry, actuatorsOutputLateralElement.value, actuatorsOutputLateralElement.label, actuatorsOutputLateralElement.units, actuatorsOutputLateralElement.color);
-  ry = y + rh;
-
-  UiElement pitchElement = DeveloperUi::getPitch(true, pitch_rad);
-  rh += drawRightDevUIElement(p, x, ry, pitchElement.value, pitchElement.label, pitchElement.units, pitchElement.color);
   ry = y + rh;
 
   UiElement actualLateralAccelElement = DeveloperUi::getActualLateralAccel(curvature, vEgo, roll, latActive, steerOverride);

@@ -26,6 +26,8 @@ private:
   void drawText(QPainter &p, int x, int y, const QString &text, QColor color = Qt::white);
   void drawRightDevUI(QPainter &p, int x, int y);
   int drawRightDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color);
+  void drawLeftDevUI(QPainter &p, int x, int y);
+  int drawLeftDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color);
   int drawBottomDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color);
   void drawBottomDevUI(QPainter &p, int x, int y);
   void drawStandstillTimer(QPainter &p, int x, int y);
