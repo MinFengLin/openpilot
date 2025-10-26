@@ -47,6 +47,29 @@ UiElement DeveloperUi::getVRel(bool lead_status, float lead_v_rel, bool is_metri
   return UiElement(value, "REL SPEED", speed_unit, color);
 }
 
+// Add Pitch display
+// Unit: rad
+UiElement DeveloperUi::getPitch(bool valid, float pitch_rad) {
+  QString value;
+  QColor color = QColor(255, 255, 255, 255);
+
+  if (valid) {
+    if (pitch_rad > 0.04) {
+      value = QString("↖ %1").arg(QString::number(pitch_rad, 'f', 3));
+      color = QColor(0, 255, 0, 255);   // uphill green
+    } else if (pitch_rad < -0.04) {
+      value = QString("↙ %1").arg(QString::number(pitch_rad, 'f', 3));
+      color = QColor(255, 0, 0, 255);   // downhill red
+    } else {
+      value = QString::number(pitch_rad, 'f', 3);
+    }
+  } else {
+    value = "-";
+  }
+
+  return UiElement(value, "PITCH", "rad", color);
+}
+
 // Add Real Steering Angle
 // Unit: Degrees
 UiElement DeveloperUi::getSteeringAngleDeg(float angle_steers, bool lat_active, bool steer_override) {

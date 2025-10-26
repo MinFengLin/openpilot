@@ -45,6 +45,7 @@ private:
   bool lead_status;
   float lead_d_rel;
   float lead_v_rel;
+  float pitch_rad = 0.0;
   bool torqueLateral;
   float angleSteers;
   float desiredCurvature;
