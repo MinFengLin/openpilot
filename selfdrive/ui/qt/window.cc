@@ -4,6 +4,8 @@
 
 #include "system/hardware/hw.h"
 
+#include "common/params.h"
+
 // We have this constructor so that we can provide custom implementations of the windows. By default (stock_ui) would receive them as nullptr, so they'll be instantiated with stock. Otherwise they'd be SP instances
 MainWindow::MainWindow(QWidget *parent, HomeWindow *hw, SettingsWindow *sw) :
     QWidget(parent),
@@ -57,14 +59,25 @@ MainWindow::MainWindow(QWidget *parent, HomeWindow *hw, SettingsWindow *sw) :
   QFontDatabase::addApplicationFont("../assets/fonts/Inter-SemiBold.ttf");
   QFontDatabase::addApplicationFont("../assets/fonts/Inter-Thin.ttf");
   QFontDatabase::addApplicationFont("../assets/fonts/JetBrainsMono-Medium.ttf");
+  // load ChenYuluoyan fonts
+  QFontDatabase::addApplicationFont("../assets/fonts/ChenYuluoyan-2.0-Thin.ttf");
+
+  std::string current_lang = Params().get("LanguageSetting");
+  QString fontFamily = "Inter";
+  if (current_lang == "main_zh-CHT") {
+      fontFamily = "'ChenYuluoyan 2.0', Inter";
+  }
 
   // no outline to prevent the focus rectangle
-  setStyleSheet(R"(
+  QString style = QString(R"(
     * {
-      font-family: Inter;
+      font-family: %1;
       outline: none;
     }
-  )");
+  )").arg(fontFamily);
+
+  setStyleSheet(style);
+
   setAttribute(Qt::WA_NoSystemBackground);
 }
 
