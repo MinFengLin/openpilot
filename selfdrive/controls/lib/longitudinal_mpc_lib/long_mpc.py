@@ -343,7 +343,7 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, v_cruise, x, v, a, j, personality=log.LongitudinalPersonality.standard):
+  def update(self, radarstate, v_cruise, x, v, a, j, personality=log.LongitudinalPersonality.standard, pitch_rad=0.0):
     v_ego = self.x0[1]
 
     if self.dynamic_follow.is_enabled():
@@ -354,6 +354,10 @@ class LongitudinalMpc:
       #print(f"DEBUG: dynamic_follow disabled, using personality t_follow={t_follow:.3f}, personality={personality}")
 
     self.status = radarstate.leadOne.status or radarstate.leadTwo.status
+    self.downhill = np.sin(pitch_rad) < -0.04
+
+    if self.downhill:
+      t_follow += 0.5
 
     # Get acceleration limits
     if self.accel_controller.is_enabled():
