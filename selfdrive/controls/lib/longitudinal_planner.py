@@ -189,7 +189,13 @@ class LongitudinalPlanner(LongitudinalPlannerDP):
       accel_coast = ACCEL_MAX
 
     v_ego = sm['carState'].vEgo
-    v_cruise_kph = min(sm['carState'].vCruise, V_CRUISE_MAX)
+    # Use the displayed set speed as the road-speed target, as in fop-openpilot.
+    # Fall back to the internal set speed when the displayed value is unavailable.
+    v_cruise_set = (sm['carState'].vCruiseCluster if self.accel_controller.use_cluster_set_speed
+                    else sm['carState'].vCruise)
+    if not 0 < v_cruise_set < V_CRUISE_UNSET:
+      v_cruise_set = sm['carState'].vCruise
+    v_cruise_kph = min(v_cruise_set, V_CRUISE_MAX)
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
 

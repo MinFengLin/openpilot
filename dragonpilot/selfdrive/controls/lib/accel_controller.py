@@ -10,6 +10,7 @@ import numpy as np
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_MDL
 from openpilot.common.params import Params
+from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 
 # 定義加速度個性化設定的列舉型態 (Eco, Normal, Sport)
 AccelPersonality = custom.LongitudinalPlanDP.AccelerationPersonality
@@ -92,6 +93,7 @@ class AccelPersonalityController:
   """
   def __init__(self):
     self.params = Params()
+    self.use_cluster_set_speed = self.params.get_bool('dp_lon_cluster_set_speed')
     self.frame = 0
     self._first = True  # 標記是否為首次執行，用於初始化加減速狀態
 
@@ -128,8 +130,16 @@ class AccelPersonalityController:
 
     if sm is not None:
       try:
+        # Apply source changes only while longitudinal control is disengaged.
+        if not sm['carControl'].longActive:
+          self.use_cluster_set_speed = self.params.get_bool('dp_lon_cluster_set_speed')
         # 取得巡航速度
-        self._v_cruise = float(sm['carState'].vCruise) * CV.KPH_TO_MS
+        # Match the planner's road-speed target for ramp-off and coast control.
+        v_cruise_set = (sm['carState'].vCruiseCluster if self.use_cluster_set_speed
+                        else sm['carState'].vCruise)
+        if not 0 < v_cruise_set < V_CRUISE_UNSET:
+          v_cruise_set = sm['carState'].vCruise
+        self._v_cruise = float(min(v_cruise_set, V_CRUISE_MAX)) * CV.KPH_TO_MS
 
         # 取得前車狀態
         if 'radarState' in sm:

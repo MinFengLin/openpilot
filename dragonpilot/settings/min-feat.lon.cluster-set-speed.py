@@ -1,0 +1,15 @@
+from dragonpilot.settings import tr
+
+ITEMS = [
+  {
+    "section": "Longitudinal",
+    "key": "dp_lon_cluster_set_speed",
+    "type": "toggle_item",
+    "title": lambda: tr("使用儀表定速值作為車速目標"),
+    "description": lambda: tr("開啟後使用儀表定速設定值（vCruiseCluster）作為車速目標；關閉時使用車輛內部定速值（vCruise）。相同設定下實際車速可能提高。請在未啟用縱向控制時切換；縱向控制啟用期間的變更會於解除後套用。"),
+    "condition": "openpilotLongitudinalControl",
+    "flags": "PERSISTENT",
+    "param_type": "BOOL",
+    "default": "0",
+  },
+]

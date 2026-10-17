@@ -158,6 +158,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"dp_lon_ocm", {PERSISTENT, BOOL, "0"}},
     {"dp_lon_aem", {PERSISTENT, BOOL, "0"}},
     {"dp_lon_apm", {PERSISTENT, BOOL, "0"}},
+    {"dp_lon_cluster_set_speed", {PERSISTENT, BOOL, "0"}},
     {"dp_lon_ext_radar", {PERSISTENT, BOOL, "0"}},
     {"dp_ui_display_mode", {PERSISTENT, INT, "0"}},
     {"dp_ui_hide_hud_speed_kph", {PERSISTENT, INT, "0"}},
