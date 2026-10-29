@@ -65,7 +65,8 @@
       eventText.classList.remove('traffic-hud-scroll');
       return;
     }
-    const { overflow, duration } = getScrollMetrics(eventText.scrollWidth, eventLine.clientWidth);
+    const textWidth = Math.max(eventText.scrollWidth, eventText.getBoundingClientRect?.().width || 0);
+    const { overflow, duration } = getScrollMetrics(textWidth, eventLine.clientWidth);
     eventText.style.setProperty('--traffic-scroll', `${-overflow}px`);
     eventText.style.setProperty('--traffic-duration', `${duration}s`);
     eventText.classList.toggle('traffic-hud-scroll', overflow > 1);
@@ -100,7 +101,7 @@
 
   const timer = window.setInterval(update, 250);
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fitEvent) : null;
-  observer?.observe(panel);
+  observer?.observe(eventLine);
   document.addEventListener('visibilitychange', update);
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;

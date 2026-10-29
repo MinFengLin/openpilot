@@ -71,8 +71,10 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
     append(...children) { this.children.push(...children); }
     appendChild(child) { this.children.push(child); }
     getClientRects() { return [{}]; }
-    get scrollWidth() { return this.textContent.length * 40; }
-    get offsetWidth() { this.reflows++; return this.scrollWidth; }
+    // Some inline/layout states report zero scrollWidth even though text is rendered wider.
+    get scrollWidth() { return 0; }
+    getBoundingClientRect() { return {width: this.textContent.length * 40}; }
+    get offsetWidth() { this.reflows++; return this.getBoundingClientRect().width; }
   }
   const host = new Element(); const page = new Element();
   const sm = state(); sm.recv_time.tdx = Date.now() / 1000;

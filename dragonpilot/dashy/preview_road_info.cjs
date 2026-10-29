@@ -93,8 +93,10 @@ setTimeout(()=>check('斷線後清除限速與跑馬燈',document.getElementById
       const scenario = manual || (elapsed < 10000 ? 'highway' : elapsed < 15000 ? 'city' : elapsed < 20000 ? 'unknown' : elapsed < 23000 ? 'clear' : 'highway');
       const roadInfo = scenario === 'clear' ? null : {roadName:scenario==='highway'?'國道一號':'中山路',
         speedLimitKph:scenario==='unknown'?null:scenario==='highway'?110:50};
-      const tdx = scenario === 'clear' ? null : {nextSpeed:65,displayNextSpeed:'65',speedUnit:'km/h',congestion:'slow',
-        events:[{description:'前方事故，占用外側車道，請留意現場指揮。'.repeat(3),isCurrentSection:false}]};
+      const events = scenario === 'highway'
+        ? [{description:'國道事故，占用外側車道，請減速並留意現場指揮。'.repeat(3),isCurrentSection:false}]
+        : scenario === 'city' ? [{description:'中山路道路施工，請依現場指示通行。',isCurrentSection:true}] : [];
+      const tdx = scenario === 'clear' ? null : {nextSpeed:65,displayNextSpeed:'65',speedUnit:'km/h',congestion:'slow',events};
       const payload = Buffer.from(JSON.stringify({ts:Date.now(),roadInfo,tdx}));
       const header = payload.length < 126 ? Buffer.from([129,payload.length]) : Buffer.from([129,126,payload.length>>8,payload.length&255]);
       socket.write(Buffer.concat([header,payload]));
