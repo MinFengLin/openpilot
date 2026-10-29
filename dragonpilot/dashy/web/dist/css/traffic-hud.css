@@ -1,0 +1,40 @@
+#traffic-hud {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(76%, 760px);
+  box-sizing: border-box;
+  padding: clamp(6px, 1vh, 12px) clamp(10px, 1.5vw, 24px);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: "Geist Mono", sans-serif;
+  font-size: clamp(14px, 2.2vw, 34px);
+  line-height: 1.45;
+  text-align: center;
+  pointer-events: none;
+  z-index: 11;
+}
+#traffic-hud[hidden], #traffic-hud [hidden] { display: none; }
+.traffic-hud-speed { font-weight: 700; white-space: nowrap; }
+#traffic-hud[data-congestion="smooth"] .traffic-hud-speed { color: #86efac; }
+#traffic-hud[data-congestion="slow"] .traffic-hud-speed { color: #fde047; }
+#traffic-hud[data-congestion="congested"] .traffic-hud-speed { color: #fca5a5; }
+.traffic-hud-event { min-width: 0; max-width: 100%; overflow: hidden; text-align: left; font-size: 0.85em; }
+.traffic-hud-event span { display: inline-block; width: max-content; white-space: nowrap; }
+.traffic-hud-scroll { animation: traffic-hud-marquee var(--traffic-duration) linear 0.8s infinite alternate; }
+@keyframes traffic-hud-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--traffic-scroll)); }
+}
+@media (max-width: 480px) {
+  #traffic-hud { max-width: 92%; font-size: 14px; }
+}
+@media (max-height: 360px) {
+  #traffic-hud { padding: 3px 8px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .traffic-hud-scroll { animation-duration: calc(var(--traffic-duration) * 2); }
+}

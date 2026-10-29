@@ -390,6 +390,37 @@ def extract_car_params(sm):
     }
 
 
+def extract_tdx(sm):
+    """Expose road traffic for the HUD; an expired publisher clears cached data.
+
+    alive only measures message freshness, not the age of upstream network data.
+    TDX travel speeds are km/h, independently of the user's display units.
+    """
+    if not sm['deviceState'].started or not sm.alive['tdx'] or not sm.valid['tdx']:
+        return None
+
+    tdx = sm['tdx']
+    next_speed = int(tdx.nextSpeed)
+    speed_available = 0 < next_speed <= 150
+    return {
+        'sectionId': str(tdx.sectionId),
+        'nextSectionId': str(tdx.nextSectionId),
+        'speed': int(tdx.speed),
+        'nextSpeed': next_speed,
+        'congestion': str(tdx.congestion),
+        'displayNextSpeed': format_speed(next_speed / Conversions.MS_TO_KPH) if speed_available else None,
+        'speedUnit': get_speed_unit(),
+        'events': [
+            {
+                'eventType': int(event.eventType),
+                'description': str(event.description),
+                'isCurrentSection': bool(event.isCurrentSection),
+            }
+            for event in tdx.events
+        ],
+    }
+
+
 # =============================================================================
 # TOPIC CONFIGURATION
 # =============================================================================
@@ -426,6 +457,8 @@ TOPICS = {
 
     # Optional/dragonpilot-specific topics - comment out to disable
     'controlsStateExt': {'extractor': extract_controls_state_ext, 'rate': 'fast', 'default': {'alkaActive': False}},
+    # Poll even without updates so stopped publishers clear the cached payload.
+    'tdx':              {'extractor': extract_tdx, 'rate': LOOP_RATE, 'default': None},
 }
 
 
