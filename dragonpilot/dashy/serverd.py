@@ -50,6 +50,7 @@ from openpilot.common.params import Params
 from openpilot.system.hardware import PC, HARDWARE
 from openpilot.system.ui.lib.multilang import multilang as base_multilang
 from dragonpilot.settings import SETTINGS, tr
+from dragonpilot.dashy.road_info import road_info_loop
 
 try:
     from openpilot.system.version import get_build_metadata as _get_build_metadata
@@ -727,6 +728,7 @@ async def _publisher_loop(app):
         try:
             sm.update(0)
             if sm.updated['dashyState']:
+                app['dashy_last_received'] = time.monotonic()
                 json_data = sm['dashyState'].json
                 if isinstance(json_data, bytes):
                     json_data = json_data.decode('utf-8')
@@ -794,19 +796,22 @@ async def on_startup(app):
     """Initialize app-level resources."""
     app['cache'] = AppCache()
     app['ws_clients'] = set()
+    app['dashy_last_received'] = 0.0
     app['publisher_task'] = asyncio.create_task(_publisher_loop(app))
+    app['road_info_task'] = asyncio.create_task(road_info_loop(app))
     logger.info("Dashy server started")
 
 
 async def on_cleanup(app):
     """Cleanup app-level resources."""
-    task = app.get('publisher_task')
-    if task and not task.done():
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+    for name in ('publisher_task', 'road_info_task'):
+        task = app.get(name)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
     logger.info("Dashy server stopped")
 
 
