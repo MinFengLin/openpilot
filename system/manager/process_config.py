@@ -140,6 +140,7 @@ procs = [
   PythonProcess("dashyd", "dragonpilot.dashy.dashyd", and_(dashy, only_onroad)),
   PythonProcess("gpsd", "dragonpilot.dashy.gpsd", only_onroad),
   PythonProcess("tdxd", "dragonpilot.selfdrive.controls.lib.tdx.tdxd", only_onroad),
+  PythonProcess("offline_mapd", "dragonpilot.mapd.manager", always_run),
 ]
 
 managed_processes = {p.name: p for p in procs}

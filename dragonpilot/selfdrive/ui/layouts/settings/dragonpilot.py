@@ -24,6 +24,8 @@ from dragonpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.list_view import toggle_item, simple_item, button_item, spin_button_item, double_spin_button_item, text_spin_button_item
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
+from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
+from dragonpilot.mapd import regions
 from openpilot.system.hardware import HARDWARE
 from dragonpilot.settings import SETTINGS, extract_depends_on_refs
 
@@ -54,6 +56,7 @@ class DragonpilotLayout(Widget):
       self._openpilot_longitudinal_control = ui_state.CP.openpilotLongitudinalControl
 
     self._load_settings()
+    self._add_offline_map_items()
 
     self._reset_dp_conf_btn = button_item(
       lambda: tr("Reset DP Settings"),
@@ -240,6 +243,55 @@ class DragonpilotLayout(Widget):
     dialog = ConfirmDialog(tr("Are you sure you want to reset ALL DP SETTINGS to default?"), tr("Reset"), callback=reset_dp_conf)
     gui_app.push_widget(dialog)
 
+  def _add_offline_map_items(self):
+    self._toggles['offline_maps_title'] = simple_item(lambda: tr('### 離線道路資料 ###'))
+    def available():
+      return ui_state.is_offroad() and not ui_state.params.get_bool('dp_mapd_busy')
+    def current_region():
+      country = ui_state.params.get('dp_mapd_country') or 'TW'
+      state = ui_state.params.get('dp_mapd_state') or ''
+      return regions().get(country, country) + (f' / {regions(True).get(state, state)}' if country == 'US' and state else '')
+    def select(states=False):
+      if not available():
+        return
+      names = regions(states)
+      if states:
+        names = {'': tr('全美國（大型下載）'), **names}
+      options = sorted(names.values())
+      key = 'dp_mapd_state' if states else 'dp_mapd_country'
+      current = ui_state.params.get(key) or ('' if states else 'TW')
+      def chosen(result):
+        if result == DialogResult.CONFIRM and available():
+          code = next(code for code, label in names.items() if label == dialog.selection)
+          ui_state.params.put(key, code, block=True)
+          if not states:
+            ui_state.params.put('dp_mapd_state', '', block=True)
+      dialog = MultiOptionDialog(tr('選擇美國州別' if states else '選擇國家'), options,
+                                 current=names.get(current, ''), callback=chosen)
+      gui_app.push_widget(dialog)
+    def request(action):
+      if not available():
+        return
+      message = ('下載所選國家／地區的離線道路資料，可能需要大量空間與時間。' if action == 'download'
+                 else '刪除所有已下載的離線道路資料？')
+      def confirmed(result):
+        if result == DialogResult.CONFIRM and available():
+          ui_state.params.put('dp_mapd_request', action, block=True)
+      gui_app.push_widget(ConfirmDialog(tr(message), tr('下載' if action == 'download' else '刪除'), callback=confirmed))
+    self._toggles['offline_country'] = button_item(tr('國家'), tr('選擇'), current_region,
+                                                   callback=lambda: select(), enabled=available)
+    self._toggles['offline_country'].action_item.set_value(current_region)
+    self._toggles['offline_state'] = button_item(tr('美國州別'), tr('選擇'), tr('僅美國適用；可選擇全美國或單一州'),
+                                                 callback=lambda: select(True),
+                                                 enabled=lambda: available() and ui_state.params.get('dp_mapd_country') == 'US')
+    self._toggles['offline_download'] = button_item(tr('下載／更新離線道路資料'), tr('下載'),
+        lambda: ui_state.params.get('dp_mapd_status') or tr('尚未下載圖資'),
+        callback=lambda: request('download'), enabled=available)
+    self._toggles['offline_status'] = simple_item(
+        lambda: tr('圖資狀態：') + (ui_state.params.get('dp_mapd_status') or tr('尚未下載圖資')))
+    self._toggles['offline_delete'] = button_item(tr('刪除所有離線圖資'), tr('刪除'),
+        callback=lambda: request('delete'), enabled=available)
+
   def _refresh_visibility(self):
     # ui_state.CP is None when this panel is first built (the UI starts before the car is up),
     # so brand/longitudinal-gated sections would be filtered out and never come back. Re-read CP
@@ -256,6 +308,7 @@ class DragonpilotLayout(Widget):
     self._defaults = {}
     self._reverse_deps = {}
     self._load_settings()
+    self._add_offline_map_items()
     self._toggles['btn_reset_dp_conf'] = self._reset_dp_conf_btn
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
 
