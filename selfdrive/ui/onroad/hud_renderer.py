@@ -5,6 +5,7 @@ import time
 import pyray as rl
 from dataclasses import dataclass
 from cereal import custom
+from dragonpilot.selfdrive.ui.road_info import OfflineRoadInfoRenderer
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.onroad.exp_button import ExpButton
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
@@ -91,6 +92,7 @@ class HudRenderer(Widget):
   def __init__(self):
     super().__init__()
     """Initialize the HUD renderer."""
+    self._road_info = OfflineRoadInfoRenderer()
     self.is_cruise_set: bool = False
     self.is_cruise_available: bool = True
     self.set_speed: float = SET_SPEED_NA
@@ -132,6 +134,7 @@ class HudRenderer(Widget):
 
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
+    self._road_info.update()
     sm = ui_state.sm
     if sm.recv_frame["carState"] < ui_state.started_frame:
       self.is_cruise_set = False
@@ -231,6 +234,7 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_current_speed(rect)
+    self._road_info.render(rect)
 
     # --- TDX 雙行顯示資訊 ---
     self._draw_tdx_info(rect)

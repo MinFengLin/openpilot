@@ -61,6 +61,7 @@ class UIState:
         "rawAudioData",
         "controlsStateExt",
         "liveTracks", # dp - for dp_ui_lead
+        "liveGPS",  # Offline mapd road information
         "tdx",
         "longitudinalPlanDP",  # dp - 紅綠燈減速中 HUD（targets[trafficStop].braking）
       ]
