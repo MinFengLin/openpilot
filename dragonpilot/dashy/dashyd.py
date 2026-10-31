@@ -390,13 +390,16 @@ def extract_car_params(sm):
     }
 
 
-def extract_tdx(sm):
+def extract_tdx(sm, started_frame=0):
     """Expose road traffic for the HUD; an expired publisher clears cached data.
 
     alive only measures message freshness, not the age of upstream network data.
     TDX travel speeds are km/h, independently of the user's display units.
     """
-    if not sm['deviceState'].started or not sm.alive['tdx'] or not sm.valid['tdx']:
+    # Match the c3x HUD: current onroad session and a live publisher.
+    # tdxd does not set Event.valid, so it is not a display prerequisite.
+    if (not sm['deviceState'].started or not sm.alive['tdx']
+            or sm.recv_frame['tdx'] < started_frame or sm.recv_frame['carState'] < started_frame):
         return None
 
     tdx = sm['tdx']
@@ -512,11 +515,20 @@ def main():
                    if isinstance(cfg.get('rate'), int)}
     valid_topics = [t for t, cfg in topics.items() if cfg.get('rate') == 'valid']
 
+    # Track the onroad boundary in this SubMaster's own frame coordinates.
+    started = False
+    started_frame = 0
+    if 'tdx' in slow_topics:
+        slow_topics['tdx'] = (lambda sm: extract_tdx(sm, started_frame), LOOP_RATE)
+
     cache_dirty = True
     frame_count = 0
 
     while True:
         sm.update(0)
+        if sm['deviceState'].started and not started:
+            started_frame = sm.frame
+        started = sm['deviceState'].started
         frame_count += 1
 
         # Refresh metric preference every ~2 seconds

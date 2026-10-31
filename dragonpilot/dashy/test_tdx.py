@@ -15,6 +15,7 @@ class FakeSubMaster(dict):
                 events=[SimpleNamespace(eventType=1, description='事故', isCurrentSection=False)],
             ),
         )
+        self.recv_frame = {'tdx': 10, 'carState': 10}
         self.alive = {'tdx': alive}
         self.valid = {'tdx': valid}
 
@@ -30,14 +31,26 @@ class TestTdxExtraction(unittest.TestCase):
         exec(compile(ast.Module(body=functions, type_ignores=[]), 'dashyd.py', 'exec'), self.namespace)
         self.extract = self.namespace['extract_tdx']
 
+    def test_matches_c3x_without_valid_flag(self):
+        self.assertIsNotNone(self.extract(FakeSubMaster(valid=False)))
+
+    def test_previous_session_data_is_hidden(self):
+        for topic in ('tdx', 'carState'):
+            sm = FakeSubMaster()
+            sm.recv_frame[topic] = 9
+            with self.subTest(topic=topic):
+                self.assertIsNone(self.extract(sm, started_frame=10))
+        sm = FakeSubMaster()
+        self.assertIsNotNone(self.extract(sm, started_frame=10))
+
     def test_traffic_and_events(self):
         result = self.extract(FakeSubMaster())
         self.assertEqual(result['displayNextSpeed'], '65')
         self.assertEqual(result['speedUnit'], 'km/h')
         self.assertEqual(result['events'], [{'eventType': 1, 'description': '事故', 'isCurrentSection': False}])
 
-    def test_expired_invalid_and_offroad_clear_data(self):
-        for settings in ({'started': False}, {'alive': False}, {'valid': False}):
+    def test_expired_and_offroad_clear_data(self):
+        for settings in ({'started': False}, {'alive': False}):
             with self.subTest(settings=settings):
                 self.assertIsNone(self.extract(FakeSubMaster(**settings)))
 
