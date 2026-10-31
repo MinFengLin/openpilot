@@ -379,9 +379,10 @@ class HudRenderer(Widget):
     x = rect.x + TS_LEFT_MARGIN
     y = rect.y + UI_CONFIG.header_height + TS_TOP_OFFSET
 
-    tdx_rect = self._tdx_speed_rect(rect)
-    if tdx_rect is not None and rl.check_collision_recs(rl.Rectangle(x, y, banner_w, TS_BANNER_HEIGHT), tdx_rect):
-      y = tdx_rect.y + tdx_rect.height + TS_TDX_GAP_Y
+    obstacles = [box for box in (self._tdx_speed_rect(rect), self._road_info.ahead_rect) if box is not None]
+    for box in sorted(obstacles, key=lambda box: box.y + box.height):
+      if rl.check_collision_recs(rl.Rectangle(x, y, banner_w, TS_BANNER_HEIGHT), box):
+        y = box.y + box.height + TS_TDX_GAP_Y
 
     banner = rl.Rectangle(x, y, banner_w, TS_BANNER_HEIGHT)
     rl.draw_rectangle_rounded(banner, 0.3, 10, rl.Color(0, 0, 0, 190))

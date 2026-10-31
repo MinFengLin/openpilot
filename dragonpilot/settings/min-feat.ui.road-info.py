@@ -18,6 +18,7 @@ ITEMS = [
   {"key": "dp_mapd_busy", "flags": "CLEAR_ON_MANAGER_START", "param_type": "BOOL", "default": "0"},
   {"key": "OSMDownloadLocations", "flags": "CLEAR_ON_MANAGER_START", "param_type": "JSON"},
   {"key": "OSMDownloadProgress", "flags": "PERSISTENT", "param_type": "JSON"},
+  {"key": "NextMapSpeedLimit", "flags": "CLEAR_ON_MANAGER_START", "param_type": "JSON"},
   {"key": "MapSpeedLimit", "flags": "CLEAR_ON_MANAGER_START", "param_type": "FLOAT"},
   {"key": "RoadName", "flags": "CLEAR_ON_MANAGER_START", "param_type": "STRING"},
   # Used only as mapd's final startup-reset marker, not as a control target.

@@ -89,7 +89,11 @@ Both consumers use `dragonpilot/mapd/road_info.py` for freshness and availabilit
 checks. The native HUD additionally requires GPS and car data from the current
 onroad session and polls map outputs once per second. Unknown limits hide the
 sign while retaining a known road name. No speed-limit controller, warning,
-offset, ahead-limit or cruise adjustment is imported. TDX remains separate.
+offset or cruise adjustment is imported. The mapd NextMapSpeedLimit output
+is shown below the native speed-limit sign as AHEAD, the upcoming limit and
+route distance, using Sunnypilot's layout and distance formatting. Dashy shows
+the same preview beneath its sign. Unknown, unchanged, malformed or stale
+previews hide independently of current road information. TDX remains separate.
 The native c3x rendering still requires device validation.
 
 ```sh

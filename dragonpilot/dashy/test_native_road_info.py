@@ -48,6 +48,25 @@ class TestNativeRoadInfo(unittest.TestCase):
         os.utime(self.mem.get_param_path('RoadName'), (1, 1))
         self.assertIsNone(read_road_info(self.params, self.mem, self.sm))
 
+    def test_ahead_preview_is_optional_fresh_and_different(self):
+        path = Path(self.mem.get_param_path('NextMapSpeedLimit'))
+        path.touch()
+        self.mem['NextMapSpeedLimit'] = {'speedlimit': 80 / 3.6, 'distance': 300}
+        result = read_road_info(self.params, self.mem, self.sm)
+        self.assertEqual(result['aheadSpeedLimitKph'], 80)
+        self.assertEqual(result['aheadDistanceM'], 300)
+        for data in ({}, {'speedlimit': 110 / 3.6, 'distance': 300},
+                     {'speedlimit': 80 / 3.6, 'distance': -1},
+                     {'speedlimit': float('nan'), 'distance': 300},
+                     {'speedlimit': 80 / 3.6, 'distance': float('inf')}, 'bad json'):
+            self.mem['NextMapSpeedLimit'] = data
+            result = read_road_info(self.params, self.mem, self.sm)
+            self.assertEqual(result['roadName'], '國道一號')
+            self.assertNotIn('aheadSpeedLimitKph', result)
+        self.mem['NextMapSpeedLimit'] = {'speedlimit': 80 / 3.6, 'distance': 300}
+        os.utime(path, (1, 1))
+        self.assertNotIn('aheadSpeedLimitKph', read_road_info(self.params, self.mem, self.sm))
+
     def test_native_layout_units_and_session_clear(self):
         # Load the real renderer methods, replacing only hardware imports.
         source = Path(__file__).parents[1] / 'selfdrive/ui/road_info.py'
@@ -69,9 +88,12 @@ class TestNativeRoadInfo(unittest.TestCase):
                          measure_text_cached=lambda font, text, size: SimpleNamespace(x=len(text) * size / 2, y=size),
                          UI_CONFIG=SimpleNamespace(set_speed_width_metric=200, set_speed_width_imperial=172, set_speed_height=204))
         exec(compile(ast.Module(body=classes, type_ignores=[]), str(source), 'exec'), namespace)
+        Path(self.mem.get_param_path('NextMapSpeedLimit')).touch()
+        self.mem['NextMapSpeedLimit'] = {'speedlimit': 80 / 3.6, 'distance': 300}
         renderer = namespace['OfflineRoadInfoRenderer']()
         renderer.update()
         self.assertEqual(renderer.limit, '110')
+        self.assertEqual(renderer.ahead_limit, '80')
         self.assertEqual(renderer.road_name, '國道一號')
         rect = rectangle(30, 30, 2100, 1000)
         renderer._render(rect)
@@ -85,8 +107,14 @@ class TestNativeRoadInfo(unittest.TestCase):
         renderer._render(rect)
         ray.draw_circle_v.assert_not_called()
         drawn = [call.args[1] for call in ray.draw_text_ex.call_args_list]
+        self.assertIn('AHEAD', drawn)
+        self.assertIn('300 m', drawn)
+        self.assertEqual(renderer.ahead_limit, '50')
+        self.assertIn('0.2 mi', drawn)
         self.assertIn('SPEED', drawn)
         self.assertIn('LIMIT', drawn)
         self.sm.recv_frame = {'liveGPS': 9, 'carState': 10}
         renderer.update()
-        self.assertEqual((renderer.limit, renderer.road_name), ('', ''))
+        self.assertEqual((renderer.limit, renderer.road_name, renderer.ahead_limit), ('', '', ''))
+        renderer._render(rect)
+        self.assertIsNone(renderer.ahead_rect)

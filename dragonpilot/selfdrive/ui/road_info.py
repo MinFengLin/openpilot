@@ -20,6 +20,9 @@ class Colors:
   WHITE = rl.WHITE
   BLACK = rl.BLACK
   RED = rl.Color(235, 32, 32, 255)
+  GREY = rl.Color(145, 155, 149, 255)
+  SUB_BG = rl.Color(0, 0, 0, 180)
+  MUTCD_LINES = rl.Color(255, 255, 255, 100)
   DARK_GREY = rl.Color(77, 77, 77, 255)
 
 
@@ -29,6 +32,9 @@ class OfflineRoadInfoRenderer(Widget):
     self.mem = Params('/dev/shm/params')
     self.road_name = ''
     self.limit = ''
+    self.ahead_limit = ''
+    self.ahead_distance = 0
+    self.ahead_rect = None
     self._last_read = -float('inf')
     self.font_bold = gui_app.font(FontWeight.BOLD)
     self.font_demi = gui_app.font(FontWeight.SEMI_BOLD)
@@ -37,7 +43,8 @@ class OfflineRoadInfoRenderer(Widget):
     sm = ui_state.sm
     if (not ui_state.started or sm.recv_frame['carState'] < ui_state.started_frame
             or sm.recv_frame['liveGPS'] < ui_state.started_frame):
-      self.road_name = self.limit = ''
+      self.road_name = self.limit = self.ahead_limit = ''
+      self.ahead_distance = 0
       self._last_read = -float('inf')
       return
     now = time.monotonic()
@@ -48,10 +55,14 @@ class OfflineRoadInfoRenderer(Widget):
     self.road_name = info['roadName'] if info else ''
     kph = info['speedLimitKph'] if info else None
     self.limit = str(round(kph if ui_state.is_metric else kph / 1.609344)) if kph else ''
+    ahead = info.get('aheadSpeedLimitKph') if info else None
+    self.ahead_limit = str(round(ahead if ui_state.is_metric else ahead / 1.609344)) if ahead else ''
+    self.ahead_distance = info.get('aheadDistanceM', 0) if info else 0
 
   def _render(self, rect: rl.Rectangle):
     # Local import avoids a cycle with HudRenderer's integration below.
     from openpilot.selfdrive.ui.onroad.hud_renderer import UI_CONFIG
+    self.ahead_rect = None
     if self.road_name:
       self._draw_road_name(rect)
     if not self.limit:
@@ -64,6 +75,8 @@ class OfflineRoadInfoRenderer(Widget):
       self._render_vienna(sign_rect, self.limit, '', Colors.BLACK, True)
     else:
       self._render_mutcd(sign_rect, self.limit, '', Colors.BLACK, True)
+    if self.ahead_limit:
+      self._draw_ahead_info(sign_rect)
 
   def _draw_road_name(self, rect):
     text = self.road_name
@@ -147,3 +160,40 @@ class OfflineRoadInfoRenderer(Widget):
 
       f_scale = 0.6 if len(sub) < 3 else 0.475
       self._draw_text_centered(self.font_bold, sub, int(box_sz * f_scale), rl.Vector2(s_rect.x + box_sz / 2, s_rect.y + box_sz / 2), white)
+
+  def _draw_ahead_info(self, sign_rect):
+    rect = rl.Rectangle(sign_rect.x + (sign_rect.width - 170) / 2, sign_rect.y + sign_rect.height + 10, 170, 160)
+    self.ahead_rect = rect
+    rl.draw_rectangle_rounded(rect, 0.35, 10, Colors.SUB_BG)
+    rl.draw_rectangle_rounded_lines_ex(rect, 0.35, 10, 3, Colors.MUTCD_LINES)
+
+    mid_x = rect.x + rect.width / 2
+    self._draw_text_centered(self.font_demi, "AHEAD", 40, rl.Vector2(mid_x, rect.y + 28), Colors.GREY)
+    self._draw_text_centered(self.font_bold, self.ahead_limit, 70, rl.Vector2(mid_x, rect.y + 82), Colors.WHITE)
+    self._draw_text_centered(self.font_demi, self._format_dist(self.ahead_distance), 36, rl.Vector2(mid_x, rect.y + 134), Colors.GREY)
+
+  @staticmethod
+  def _format_dist(d):
+    # metric
+    if ui_state.is_metric:
+      if d < 50:
+        return "Near"
+
+      if d >= 1000:
+        return f"{d / 1000:.1f} km"
+
+      d_rounded = round(d, -1) if d < 200 else round(d, -2)
+      return f"{int(d_rounded)} m"
+
+    # imperial
+    d_ft = d * 3.28084
+    if d_ft < 100:
+      return "Near"
+
+    if d_ft >= 900:
+      return f"{d * 0.000621371:.1f} mi"
+
+    if d_ft < 500:
+      return f"{int(round(d_ft / 50) * 50)} ft"
+
+    return f"{int(round(d_ft / 100) * 100)} ft"

@@ -23,3 +23,20 @@ test('uses mph when HUD speed unit is mph', () => {
   const sm = state(); sm.carState = { speedUnit: 'mph' };
   assert.equal(getRoadDisplay(sm, 10000).limit, '68');
 });
+
+test('ahead limit shows route distance in metric and imperial', () => {
+  const sm = state();
+  sm.roadInfo.aheadSpeedLimitKph = 80; sm.roadInfo.aheadDistanceM = 300;
+  assert.equal(getRoadDisplay(sm, 10000).ahead, 'AHEAD · 80 km/h · 300 m');
+  sm.carState = { speedUnit: 'mph' };
+  assert.equal(getRoadDisplay(sm, 10000).ahead, 'AHEAD · 50 mph · 0.2 mi');
+});
+test('cancelled, same, invalid and expired previews disappear', () => {
+  const sm = state();
+  for (const [limit, distance] of [[110, 300], [80, -1], [NaN, 300], [80, Infinity], [undefined, undefined]]) {
+    sm.roadInfo.aheadSpeedLimitKph = limit; sm.roadInfo.aheadDistanceM = distance;
+    assert.equal(getRoadDisplay(sm, 10000).ahead, '');
+  }
+  sm.roadInfo.aheadSpeedLimitKph = 80; sm.roadInfo.aheadDistanceM = 300;
+  assert.equal(getRoadDisplay(sm, 14001), null);
+});

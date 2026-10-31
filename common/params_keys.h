@@ -188,6 +188,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"OSMDownloadLocations", {CLEAR_ON_MANAGER_START, JSON}},
     {"OSMDownloadProgress", {PERSISTENT, JSON}},
     {"MapSpeedLimit", {CLEAR_ON_MANAGER_START, FLOAT}},
+    {"NextMapSpeedLimit", {CLEAR_ON_MANAGER_START, JSON}},
     {"RoadName", {CLEAR_ON_MANAGER_START, STRING}},
     {"MapTargetVelocities", {CLEAR_ON_MANAGER_START, JSON}},
 };

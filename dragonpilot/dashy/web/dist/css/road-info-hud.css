@@ -37,3 +37,12 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+
+.road-info-ahead {
+  margin-top: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 75%);
+  color: white;
+  font-size: clamp(12px, 1.4vw, 20px);
+}

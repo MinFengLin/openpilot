@@ -122,7 +122,7 @@ def main():
                         stop(child)
                         child = None
                         mem.put_bool('dp_mapd_active', False, block=True)
-                        for name in ('MapSpeedLimit', 'RoadName', 'OSMDownloadLocations', 'MapTargetVelocities'):
+                        for name in ('MapSpeedLimit', 'NextMapSpeedLimit', 'RoadName', 'OSMDownloadLocations', 'MapTargetVelocities'):
                             mem.remove(name)
                         params.remove('OSMDownloadProgress')
                         installed.pop(selection, None)
@@ -151,6 +151,7 @@ def main():
                 if (pending or enabled) and (child is None or child.poll() is not None):
                     if BINARY.exists() and platform.machine() == 'aarch64':
                         mem.remove('MapSpeedLimit')
+                        mem.remove('NextMapSpeedLimit')
                         mem.remove('RoadName')
                         mem.remove('MapTargetVelocities')
                         child = subprocess.Popen([str(BINARY)], cwd=ROOT,

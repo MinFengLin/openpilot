@@ -31,6 +31,22 @@ def read_road_info(params, mem, sm):
         if not all(0 <= time.time() - os.stat(mem.get_param_path(key)).st_mtime < 5
                    for key in ('MapSpeedLimit', 'RoadName')):
             return None
-        return format_road_info(mem.get('MapSpeedLimit'), mem.get('RoadName'))
+        result = format_road_info(mem.get('MapSpeedLimit'), mem.get('RoadName'))
+        # mapd supplies the distance along the upcoming ways, in meters.
+        # An absent/stale preview must not hide the current road information.
+        if result and result['speedLimitKph']:
+            try:
+                age = time.time() - os.stat(mem.get_param_path('NextMapSpeedLimit')).st_mtime
+                ahead = mem.get('NextMapSpeedLimit') or {}
+                speed = float(ahead.get('speedlimit', 0)) * 3.6
+                distance = float(ahead.get('distance', -1))
+                if (0 <= age < 5 and math.isfinite(speed) and 0 < speed <= 200
+                        and math.isfinite(distance) and distance >= 0
+                        and not math.isclose(speed, result['speedLimitKph'])):
+                    result['aheadSpeedLimitKph'] = speed
+                    result['aheadDistanceM'] = distance
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
+        return result
     except (OSError, ValueError, TypeError):
         return None
