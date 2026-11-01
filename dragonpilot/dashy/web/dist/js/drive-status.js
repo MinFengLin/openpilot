@@ -42,7 +42,9 @@
   const timer = document.createElement('div'); timer.className = 'drive-status-time';
   timer.setAttribute('aria-label', '行駛時間，從本次車機開機起算');
   const row = document.createElement('div'); row.className = 'drive-status-badges';
-  panel.append(clock, timer, row); host.appendChild(panel);
+  const times = document.createElement('div'); times.className = 'drive-status-times';
+  times.append(clock, timer);
+  panel.append(times, row); host.appendChild(panel);
   const svgNS = 'http://www.w3.org/2000/svg';
   function makeCluster(badges) {
     const [lane, follow] = badges;

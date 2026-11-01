@@ -62,7 +62,9 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
       createElement: () => new Element(), createElementNS: () => new Element(), addEventListener() {}},
     getComputedStyle: () => ({visibility: 'visible'})};
   vm.runInNewContext(source, dom);
-  const panel = host.children[0]; const row = panel.children[2];
+  const panel = host.children[0]; const row = panel.children[1];
+  assert.equal(panel.children[0].className, 'drive-status-times');
+  assert.equal(panel.children[0].children.length, 2);
   assert.equal(panel.hidden, false); assert.equal(row.children.length, 1);
   assert.equal(row.children[0].children[0].children[0].children.length, 10);
   assert.equal(row.children[0].children[0].children.length, 1); // SVG only; no visible status labels

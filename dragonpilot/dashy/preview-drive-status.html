@@ -4,17 +4,19 @@
   right: max(12px, env(safe-area-inset-right));
   width: clamp(136px, 15vw, 176px);
   max-width: 42%;
-  padding: 12px 14px 8px;
-  border: 1px solid rgb(190 216 240 / 12%);
-  border-radius: 16px;
-  background: linear-gradient(145deg, rgb(19 29 40 / 88%), rgb(8 15 23 / 76%));
-  box-shadow: 0 5px 20px rgb(0 0 0 / 16%);
   z-index: 11;
   color: #edf5fc;
   font: 12px/1.4 sans-serif;
   pointer-events: none;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.drive-status-times, .drive-status-badges {
+  padding: 12px 14px 8px;
+  border: 1px solid rgb(190 216 240 / 12%);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgb(19 29 40 / 88%), rgb(8 15 23 / 76%));
+  box-shadow: 0 5px 20px rgb(0 0 0 / 16%);
 }
 #drive-status[hidden], #drive-status [hidden] { display: none; }
 .drive-status-clock {
@@ -34,7 +36,7 @@
   white-space: nowrap;
 }
 .drive-status-time::before { content: '行駛時間'; color: #8b9dac; font-size: 10px; letter-spacing: 0.03em; }
-.drive-status-badges { margin-top: 10px; padding-top: 7px; border-top: 1px solid rgb(190 216 240 / 10%); }
+.drive-status-badges { position: relative; width: 76%; margin: 12px 0 0 auto; padding: 8px 10px; }
 .drive-status-cluster {
   display: block;
   width: 100%;
@@ -55,10 +57,11 @@
 .assist-wheels { fill: none; stroke: #c4cdd2; stroke-width: 3; }
 .drive-status-detail { position: absolute; top: 100%; right: 0; width: 240px; max-width: 80vw; margin-top: 8px; padding: 12px; border: 1px solid #344657; border-radius: 10px; background: #111e2b; color: #cbd9e5; text-align: left; }
 @media (max-height: 360px) {
-  #drive-status { width: 136px; padding: 8px 10px 5px; border-radius: 12px; }
+  #drive-status { width: 136px; }
+  .drive-status-times, .drive-status-badges { padding: 8px 10px; border-radius: 12px; }
   .drive-status-clock { font-size: 22px; }
   .drive-status-time { margin-top: 4px; }
-  .drive-status-badges { margin-top: 6px; padding-top: 4px; }
+  .drive-status-badges { margin-top: 8px; }
 }
 </style><style>
 *{box-sizing:border-box}body{margin:0;background:#10151b;color:white;font:16px sans-serif}#hud-page{height:72vh;min-height:300px;position:relative;background:linear-gradient(#151c27,#182330)}#hud-page-content{position:relative;height:100%;overflow:hidden}.road{position:absolute;bottom:0;left:20%;width:60%;height:65%;background:#244446;clip-path:polygon(48% 0,52% 0,100% 100%,0 100%)}.speed{position:absolute;top:8%;left:50%;transform:translateX(-50%);text-align:center;font-size:64px}.speed small{display:block;font-size:18px;color:#9eabb6}#controls{padding:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}label{display:flex;gap:6px;align-items:center}select,button{padding:8px;background:#243141;color:white;border:1px solid #567;border-radius:6px}p{padding:0 18px;color:#aab8c6;font-size:14px}.car{position:absolute;bottom:14%;left:48%;width:36px;height:58px;background:#cdd7dd;border-radius:10px}</style>
@@ -108,7 +111,9 @@
   const timer = document.createElement('div'); timer.className = 'drive-status-time';
   timer.setAttribute('aria-label', '行駛時間，從本次車機開機起算');
   const row = document.createElement('div'); row.className = 'drive-status-badges';
-  panel.append(clock, timer, row); host.appendChild(panel);
+  const times = document.createElement('div'); times.className = 'drive-status-times';
+  times.append(clock, timer);
+  panel.append(times, row); host.appendChild(panel);
   const svgNS = 'http://www.w3.org/2000/svg';
   function makeCluster(badges) {
     const [lane, follow] = badges;
