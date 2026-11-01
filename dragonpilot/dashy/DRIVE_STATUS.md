@@ -1,9 +1,9 @@
-# Upper-right boot clock and Toyota assist graphic
+# Upper-right boot clock and vehicle assist graphic
 
 The clock uses Linux CLOCK_BOOTTIME, including offroad time and suspend.
 Refreshing the phone or restarting dashyd does not reset it; rebooting does.
 
-The Toyota SVG follows these display rules:
+The vehicle SVG follows these display rules:
 
 - Side lane lines light when the DP lane-centering setting is enabled.
   This is intentionally the setting, not proof of active lateral actuation.
@@ -20,7 +20,8 @@ The Toyota SVG follows these display rules:
 - With both centering off and longitudinal control inactive/unknown, the
   entire assist graphic hides. The boot clock remains.
 
-Non-Toyota vehicles show only the clock. Stock ACC control is not inferred.
+All vehicle brands use the same shared signals; there is no brand whitelist.
+Without valid carParams only the clock is shown. Stock ACC control is not inferred.
 The backend refreshes once per second; four seconds without a received
 payload hides the panel. All graphics are display-only. Tap the graphic for
 an explanation; labels are not visible by default.
@@ -52,3 +53,7 @@ interpolated between updates independently of the phone timezone. The second
 line is labeled 行駛時間 but still measures time since device boot, including
 offroad time; it is not accumulated moving time. Unknown wall-clock data shows
 an em dash. The standalone preview uses the computer clock as simulated data.
+
+The backend payload is driveStatus.assist. The former Toyota-only gate and
+ToyotaFlags dependency have been removed. Brand-specific settings elsewhere
+in Dashy remain filtered to their applicable vehicles.

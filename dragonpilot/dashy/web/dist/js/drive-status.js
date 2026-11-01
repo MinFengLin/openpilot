@@ -1,4 +1,4 @@
-/* Boot elapsed time and read-only Toyota assist badges. */
+/* Boot elapsed time and read-only vehicle assist graphic. */
 (() => {
   'use strict';
   function getDisplay(sm, now = Date.now()) {
@@ -9,17 +9,17 @@
     const elapsed = Math.floor(status.uptimeSeconds + (now - received) / 1000);
     const pad = value => String(value).padStart(2, '0');
     const timer = `${pad(Math.floor(elapsed / 3600))}:${pad(Math.floor(elapsed / 60) % 60)}:${pad(elapsed % 60)}`;
-    const toyota = status.toyota;
+    const assist = status.assist;
     const badges = [];
-    if (toyota && (toyota.laneCenteringEnabled === true || toyota.longitudinalActive === true)) {
-      const centered = toyota.laneCenteringEnabled === true;
-      badges.push({ icon: 'lane', leftGlow: toyota.leftGlow || 'none', rightGlow: toyota.rightGlow || 'none', state: centered ? 'enabled' : 'off',
+    if (assist && (assist.laneCenteringEnabled === true || assist.longitudinalActive === true)) {
+      const centered = assist.laneCenteringEnabled === true;
+      badges.push({ icon: 'lane', leftGlow: assist.leftGlow || 'none', rightGlow: assist.rightGlow || 'none', state: centered ? 'enabled' : 'off',
         text: `置中${centered ? '開' : '關'}`, title: '兩側車道線依車道置中開關亮起' });
-      const controlling = toyota.longitudinalActive === true;
-      const bars = controlling && Number.isInteger(toyota.followBars) && toyota.followBars >= 1 && toyota.followBars <= 3
-        ? toyota.followBars : 0;
+      const controlling = assist.longitudinalActive === true;
+      const bars = controlling && Number.isInteger(assist.followBars) && assist.followBars >= 1 && assist.followBars <= 3
+        ? assist.followBars : 0;
       const mode = ['', '積極', '標準', '輕鬆'][bars];
-      badges.push({ icon: 'follow', bars, leadDetected: controlling && toyota.leadDetected === true,
+      badges.push({ icon: 'follow', bars, leadDetected: controlling && assist.leadDetected === true,
         state: controlling ? 'enabled' : 'off', text: mode || '縱向未控制或距離未知',
         title: bars ? `縱向控制中；實際距離指令 ${bars} 條（${mode}）；前車位置隨距離模式示意，非量測距離`
           : '縱向控制未啟用或距離訊號未知，不顯示距離線' });
@@ -115,8 +115,8 @@
     const display = !document.hidden && page?.getClientRects().length
       && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
     panel.hidden = !display;
-    clock.textContent = display ? `目前時間 ${display.currentTime}` : '';
-    timer.textContent = display ? `行駛時間 ${display.timer}` : '';
+    clock.textContent = display ? display.currentTime : '';
+    timer.textContent = display ? display.timer : '';
     const badges = display?.badges || [];
     const key = JSON.stringify(badges);
     if (key !== lastBadges) { row.replaceChildren(...(badges.length ? [makeCluster(badges)] : [])); lastBadges = key; }

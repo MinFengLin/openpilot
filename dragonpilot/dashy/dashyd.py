@@ -38,7 +38,6 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from opendbc.car.common.conversions import Conversions
-from opendbc.car.toyota.values import ToyotaFlags
 from dragonpilot.dashy.drive_status import extract_drive_status
 
 # Main loop rate
@@ -553,7 +552,7 @@ def main():
                 cache_dirty = True
 
         if frame_count % LOOP_RATE == 0:
-            cache['driveStatus'] = extract_drive_status(sm, _ensure_params(), int(ToyotaFlags.TSS1_SNG))
+            cache['driveStatus'] = extract_drive_status(sm, _ensure_params())
             cache_dirty = True
 
         # Valid-only topics - just track valid state

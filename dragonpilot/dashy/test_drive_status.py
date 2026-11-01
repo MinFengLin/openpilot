@@ -24,31 +24,33 @@ class TestDriveStatus(unittest.TestCase):
 
     def extract(self, sm):
         with patch('dragonpilot.dashy.drive_status.boot_seconds', return_value=3661):
-            return extract_drive_status(sm, self.params, 1 << 14)
+            return extract_drive_status(sm, self.params)
 
     def test_timer_uses_device_boot_clock(self):
         with patch('time.clock_gettime', return_value=3661.9) as clock:
             self.assertEqual(boot_seconds(), 3661)
             clock.assert_called_once_with(time.CLOCK_BOOTTIME)
 
-    def test_toyota_modes_and_active_control(self):
+    def test_vehicle_modes_and_active_control(self):
         result = self.extract(SubMaster())
         self.assertEqual(result['uptimeSeconds'], 3661)
-        self.assertTrue(result['toyota']['lateralActive'])
-        self.assertTrue(result['toyota']['leadDetected'])
-        self.assertEqual(result['toyota']['leadDistanceMeters'], 25.0)
-        self.assertEqual(result['toyota']['stopAndGoPhase'], 'following')
+        self.assertTrue(result['assist']['lateralActive'])
+        self.assertTrue(result['assist']['leadDetected'])
+        self.assertEqual(result['assist']['leadDistanceMeters'], 25.0)
         for bars, mode in enumerate(('aggressive', 'standard', 'relaxed'), 1):
             sm = SubMaster(); sm['selfdriveState'].personality = 'standard'; sm['carControl'].hudControl.leadDistanceBars = bars
-            self.assertEqual(self.extract(sm)['toyota']['followMode'], mode)
+            self.assertEqual(self.extract(sm)['assist']['followMode'], mode)
 
-    def test_applied_tss1_flag_enables_sng(self):
-        self.assertTrue(self.extract(SubMaster(flags=1 << 14, min_speed=8))['toyota']['stopAndGoAvailable'])
-        self.assertFalse(self.extract(SubMaster(min_speed=8))['toyota']['stopAndGoAvailable'])
+    def test_all_brands_use_shared_vehicle_signals(self):
+        for brand in ('toyota', 'honda', 'hyundai', 'volkswagen', 'mock'):
+            with self.subTest(brand=brand):
+                state = self.extract(SubMaster(brand=brand))['assist']
+                self.assertTrue(state['longitudinalActive'])
+                self.assertEqual(state['followBars'], 2)
+                self.assertEqual(state['leftGlow'], 'blue')
 
     def test_stock_longitudinal_does_not_claim_openpilot_modes(self):
-        toyota = self.extract(SubMaster(longitudinal=False))['toyota']
-        self.assertIsNone(toyota['stopAndGoAvailable'])
+        toyota = self.extract(SubMaster(longitudinal=False))['assist']
         self.assertIsNone(toyota['longitudinalActive'])
         self.assertIsNone(toyota['followMode'])
 
@@ -58,47 +60,44 @@ class TestDriveStatus(unittest.TestCase):
                 with self.subTest(field=field, topic=topic):
                     sm = SubMaster(); getattr(sm, field)[topic] = False
                     state = self.extract(sm)
-                    if topic == 'carParams': self.assertIsNone(state['toyota'])
-                    elif topic == 'carControl': self.assertIsNone(state['toyota']['lateralActive'])
-                    else: self.assertIsNone(state['toyota']['leadDetected'])
-        self.assertIsNone(self.extract(SubMaster(brand='honda'))['toyota'])
+                    if topic == 'carParams': self.assertIsNone(state['assist'])
+                    elif topic == 'carControl': self.assertIsNone(state['assist']['lateralActive'])
+                    else: self.assertIsNone(state['assist']['leadDetected'])
 
     def test_live_changes_not_settings_drive_icons(self):
         sm = SubMaster()
         sm['carControl'].latActive = False
         sm['carState'].standstill = True
         sm['radarState'].leadOne.status = False
-        state = self.extract(sm)['toyota']
+        state = self.extract(sm)['assist']
         self.assertTrue(state['laneCenteringEnabled'])
         self.assertFalse(state['lateralActive'])
         self.assertFalse(state['leadDetected'])
-        self.assertEqual(state['stopAndGoPhase'], 'holding')
         sm.alive['carControl'] = False
-        state = self.extract(sm)['toyota']
+        state = self.extract(sm)['assist']
         self.assertEqual(state['followBars'], 0)
-        self.assertIsNone(state['stopAndGoPhase'])
 
     def test_glow_is_per_side_and_blindspot_takes_priority(self):
         sm = SubMaster()
-        state = self.extract(sm)['toyota']
+        state = self.extract(sm)['assist']
         self.assertEqual((state['leftGlow'], state['rightGlow']), ('blue', 'none'))
         sm['carState'].rightBlindspot = True
         sm['carState'].leftBlindspot = True
-        state = self.extract(sm)['toyota']
+        state = self.extract(sm)['assist']
         self.assertEqual((state['leftGlow'], state['rightGlow']), ('green', 'green'))
         sm.valid['carState'] = False
-        self.assertEqual(self.extract(sm)['toyota']['rightGlow'], 'none')
+        self.assertEqual(self.extract(sm)['assist']['rightGlow'], 'none')
         sm.alive['modelV2'] = False
-        state = self.extract(sm)['toyota']
+        state = self.extract(sm)['assist']
         self.assertEqual((state['leftGlow'], state['rightGlow']), ('none', 'none'))
         sm.valid['carState'] = True
-        self.assertEqual(self.extract(sm)['toyota']['leftGlow'], 'green')
+        self.assertEqual(self.extract(sm)['assist']['leftGlow'], 'green')
 
     def test_invalid_lane_confidence_does_not_glow(self):
         sm = SubMaster()
         for value in (float('nan'), float('inf'), -1, 1.1, 0.34):
             sm['modelV2'].laneLineProbs = [0.9, value, value, 0.9]
-            state = self.extract(sm)['toyota']
+            state = self.extract(sm)['assist']
             self.assertEqual((state['leftGlow'], state['rightGlow']), ('none', 'none'))
 
     def test_current_time_comes_from_vehicle(self):
