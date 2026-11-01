@@ -1,0 +1,29 @@
+#drive-status {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  max-width: 46%;
+  z-index: 11;
+  color: #fff;
+  font: clamp(11px, 1.35vw, 19px)/1.35 sans-serif;
+  pointer-events: none;
+  text-align: right;
+}
+#drive-status[hidden], #drive-status [hidden] { display: none; }
+.drive-status-clock { margin-bottom: 4px; }
+.drive-status-clock, .drive-status-time { display: table; margin-left: auto; background: #000b; padding: 4px 8px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.drive-status-badges { margin-top: 4px; }
+.drive-status-cluster {
+  display: inline-block; width: clamp(100px, 13vw, 156px); padding: 4px;
+  border: 0; border-radius: 10px; background: #0009; color: #64727a;
+  pointer-events: auto; cursor: pointer;
+}
+.drive-status-cluster:focus-visible { outline: 2px solid #64dfff; }
+.drive-status-cluster svg { display: block; width: 100%; height: auto; }
+.assist-lanes, .assist-distance { fill: #49535c; }
+.assist-lanes[data-state="active"], .assist-lanes[data-state="enabled"], .assist-distance[data-state="enabled"] { fill: #35d9ef; }
+.assist-car { fill: #d4dadd; stroke: #89969d; stroke-width: 1.3; }
+.assist-window { fill: #26323e; }
+.assist-wheels { fill: none; stroke: #c4cdd2; stroke-width: 3; }
+.drive-status-detail { max-width: 260px; margin-top: 5px; padding: 8px; border-radius: 6px; background: #111f; text-align: left; }
+@media (max-width: 480px) { #drive-status { max-width: 42%; } }

@@ -1,0 +1,166 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashy 圖示預覽</title><style>#drive-status {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  max-width: 46%;
+  z-index: 11;
+  color: #fff;
+  font: clamp(11px, 1.35vw, 19px)/1.35 sans-serif;
+  pointer-events: none;
+  text-align: right;
+}
+#drive-status[hidden], #drive-status [hidden] { display: none; }
+.drive-status-clock { margin-bottom: 4px; }
+.drive-status-clock, .drive-status-time { display: table; margin-left: auto; background: #000b; padding: 4px 8px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.drive-status-badges { margin-top: 4px; }
+.drive-status-cluster {
+  display: inline-block; width: clamp(100px, 13vw, 156px); padding: 4px;
+  border: 0; border-radius: 10px; background: #0009; color: #64727a;
+  pointer-events: auto; cursor: pointer;
+}
+.drive-status-cluster:focus-visible { outline: 2px solid #64dfff; }
+.drive-status-cluster svg { display: block; width: 100%; height: auto; }
+.assist-lanes, .assist-distance { fill: #49535c; }
+.assist-lanes[data-state="active"], .assist-lanes[data-state="enabled"], .assist-distance[data-state="enabled"] { fill: #35d9ef; }
+.assist-car { fill: #d4dadd; stroke: #89969d; stroke-width: 1.3; }
+.assist-window { fill: #26323e; }
+.assist-wheels { fill: none; stroke: #c4cdd2; stroke-width: 3; }
+.drive-status-detail { max-width: 260px; margin-top: 5px; padding: 8px; border-radius: 6px; background: #111f; text-align: left; }
+@media (max-width: 480px) { #drive-status { max-width: 42%; } }
+</style><style>
+*{box-sizing:border-box}body{margin:0;background:#10151b;color:white;font:16px sans-serif}#hud-page{height:72vh;min-height:300px;position:relative;background:linear-gradient(#151c27,#182330)}#hud-page-content{position:relative;height:100%;overflow:hidden}.road{position:absolute;bottom:0;left:20%;width:60%;height:65%;background:#244446;clip-path:polygon(48% 0,52% 0,100% 100%,0 100%)}.speed{position:absolute;top:8%;left:50%;transform:translateX(-50%);text-align:center;font-size:64px}.speed small{display:block;font-size:18px;color:#9eabb6}#controls{padding:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}label{display:flex;gap:6px;align-items:center}select,button{padding:8px;background:#243141;color:white;border:1px solid #567;border-radius:6px}p{padding:0 18px;color:#aab8c6;font-size:14px}.car{position:absolute;bottom:14%;left:48%;width:36px;height:58px;background:#cdd7dd;border-radius:10px}</style>
+<div id="hud-page"><div id="hud-page-content"><div class="road"></div><div class="speed">100<small>km/h</small></div><div class="car"></div></div></div>
+<div id="controls"><label><input id="lane" type="checkbox" checked>置中開啟</label><label><input id="long" type="checkbox" checked>縱向控制中</label><label>跟車模式<select id="mode"><option value="aggressive">積極：1 條</option><option value="standard" selected>標準：2 條</option><option value="relaxed">輕鬆：3 條</option><option value="">未知</option></select></label><label><input id="leftLane" type="checkbox" checked>左車道線</label><label><input id="rightLane" type="checkbox" checked>右車道線</label><label><input id="leftBlind" type="checkbox">左盲點</label><label><input id="rightBlind" type="checkbox">右盲點</label><label><input id="toyota" type="checkbox" checked>Toyota</label><label><input id="connected" type="checkbox" checked>連線</label></div><p>預覽使用真正的 Dashy SVG / CSS；背景與車速為示意資料。點右上圖示可開啟詳細說明。取消連線後約 4 秒隱藏。</p>
+<script>window.sm={recv_time:{},driveStatus:null};const start=performance.now();function publish(){if(!document.getElementById('connected').checked)return;const checked=id=>document.getElementById(id).checked;sm.recv_time.driveStatus=Date.now()/1000;sm.driveStatus={currentTimeSeconds:Date.now()/1000,utcOffsetSeconds:-new Date().getTimezoneOffset()*60,uptimeSeconds:5025+Math.floor((performance.now()-start)/1000),toyota:checked('toyota')?{laneCenteringEnabled:checked('lane'),lateralActive:checked('lane'),stopAndGoAvailable:true,longitudinalActive:checked('long'),followMode:document.getElementById('mode').value||null,followBars:({aggressive:1,standard:2,relaxed:3}[document.getElementById('mode').value]||0),leadDetected:true,leftGlow:checked('leftBlind')?'green':checked('leftLane')?'blue':'none',rightGlow:checked('rightBlind')?'green':checked('rightLane')?'blue':'none',stopAndGoPhase:checked('long')?'following':null}:null};}document.getElementById('controls').addEventListener('change',publish);publish();setInterval(publish,1000);</script><script>/* Boot elapsed time and read-only Toyota assist badges. */
+(() => {
+  'use strict';
+  function getDisplay(sm, now = Date.now()) {
+    const status = sm?.driveStatus;
+    const received = Number(sm?.recv_time?.driveStatus) * 1000;
+    if (!status || !Number.isFinite(received) || received > now || now - received > 4000
+        || !Number.isFinite(status.uptimeSeconds) || status.uptimeSeconds < 0) return null;
+    const elapsed = Math.floor(status.uptimeSeconds + (now - received) / 1000);
+    const pad = value => String(value).padStart(2, '0');
+    const timer = `${pad(Math.floor(elapsed / 3600))}:${pad(Math.floor(elapsed / 60) % 60)}:${pad(elapsed % 60)}`;
+    const toyota = status.toyota;
+    const badges = [];
+    if (toyota && (toyota.laneCenteringEnabled === true || toyota.longitudinalActive === true)) {
+      const centered = toyota.laneCenteringEnabled === true;
+      badges.push({ icon: 'lane', leftGlow: toyota.leftGlow || 'none', rightGlow: toyota.rightGlow || 'none', state: centered ? 'enabled' : 'off',
+        text: `置中${centered ? '開' : '關'}`, title: '兩側車道線依車道置中開關亮起' });
+      const controlling = toyota.longitudinalActive === true;
+      const bars = controlling && Number.isInteger(toyota.followBars) && toyota.followBars >= 1 && toyota.followBars <= 3
+        ? toyota.followBars : 0;
+      const mode = ['', '積極', '標準', '輕鬆'][bars];
+      badges.push({ icon: 'follow', bars, leadDetected: controlling && toyota.leadDetected === true,
+        state: controlling ? 'enabled' : 'off', text: mode || '縱向未控制或距離未知',
+        title: bars ? `縱向控制中；實際距離指令 ${bars} 條（${mode}）；前車位置隨距離模式示意，非量測距離`
+          : '縱向控制未啟用或距離訊號未知，不顯示距離線' });
+    }
+    let currentTime = '—';
+    if (Number.isFinite(status.currentTimeSeconds) && Number.isFinite(status.utcOffsetSeconds)) {
+      const clock = new Date((status.currentTimeSeconds + status.utcOffsetSeconds) * 1000 + now - received);
+      currentTime = `${pad(clock.getUTCHours())}:${pad(clock.getUTCMinutes())}:${pad(clock.getUTCSeconds())}`;
+    }
+    return { timer, currentTime, badges };
+  }
+  window.DashyDriveStatus = { getDisplay };
+  if (typeof document === 'undefined') return;
+  const host = document.getElementById('hud-page-content');
+  if (!host) return;
+  const panel = document.createElement('div');
+  panel.id = 'drive-status'; panel.hidden = true;
+  const clock = document.createElement('div'); clock.className = 'drive-status-clock';
+  clock.setAttribute('aria-label', '車機目前時間');
+  const timer = document.createElement('div'); timer.className = 'drive-status-time';
+  timer.setAttribute('aria-label', '行駛時間，從本次車機開機起算');
+  const row = document.createElement('div'); row.className = 'drive-status-badges';
+  panel.append(clock, timer, row); host.appendChild(panel);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  function makeCluster(badges) {
+    const [lane, follow] = badges;
+    const item = document.createElement('button');
+    item.type = 'button'; item.className = 'drive-status-cluster';
+    const description = badges.map(b => `${b.text}。${b.title}`).join('；');
+    item.title = description; item.setAttribute('aria-label', description);
+    item.setAttribute('aria-expanded', 'false');
+    const icon = document.createElementNS(svgNS, 'svg');
+    icon.setAttribute('viewBox', '0 0 120 82'); icon.setAttribute('aria-hidden', 'true');
+    const draw = (d, className, state, opacity = '1', transform = '') => {
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', d); path.setAttribute('class', className);
+      if (transform) path.setAttribute('transform', transform);
+      path.setAttribute('data-state', state); path.setAttribute('opacity', opacity);
+      icon.appendChild(path);
+    };
+    // Lane lines follow the centering switch; distance display requires live longitudinal control.
+    draw('M42 24 12 76 22 76 47 24Z M73 24 98 76 108 76 78 24Z',
+      'assist-lanes', lane.state);
+    for (let i = 0; i < 3; i++) {
+      const y = 40 + i * 12; const inset = 39 - i * 7;
+      draw(`M${inset} ${y}H${120 - inset}L${124 - inset} ${y + 6}H${inset - 4}Z`,
+        'assist-distance', follow.state, i >= 3 - follow.bars ? '1' : '0');
+    }
+    const steps = follow.bars ? 3 - follow.bars : 0;
+    const carTransform = `translate(60 ${steps * 12}) scale(${1 + steps * 0.06}) translate(-60 0)`;
+    const carOpacity = follow.leadDetected && follow.bars ? '1' : '0';
+    draw('M48 15 51 6H69L72 15 76 18V29H44V18Z', 'assist-car', follow.state, carOpacity, carTransform);
+    draw('M51 15 54 9H66L69 15Z', 'assist-window', follow.state, carOpacity, carTransform);
+    draw('M48 28V33M72 28V33', 'assist-wheels', follow.state, carOpacity, carTransform);
+    const defs = document.createElementNS(svgNS, 'defs');
+    for (const side of ['left', 'right']) {
+      const state = lane[`${side}Glow`];
+      const color = state === 'green' ? '#40f478' : '#29cfff';
+      const gradient = document.createElementNS(svgNS, 'linearGradient');
+      gradient.setAttribute('id', `assist-glow-${side}`);
+      gradient.setAttribute('x1', side === 'left' ? '0%' : '100%');
+      gradient.setAttribute('x2', side === 'left' ? '100%' : '0%');
+      for (const [offset, opacity] of [['0%', '0'], ['100%', '0.85']]) {
+        const stop = document.createElementNS(svgNS, 'stop');
+        stop.setAttribute('offset', offset); stop.setAttribute('stop-color', color);
+        stop.setAttribute('stop-opacity', opacity); gradient.appendChild(stop);
+      }
+      defs.appendChild(gradient);
+    }
+    icon.appendChild(defs);
+    for (const side of ['left', 'right']) {
+      const glow = document.createElementNS(svgNS, 'path');
+      glow.setAttribute('d', side === 'left' ? 'M36 24 0 76H12L42 24Z' : 'M78 24 108 76H120L84 24Z');
+      glow.setAttribute('fill', `url(#assist-glow-${side})`);
+      glow.setAttribute('data-side', side);
+      glow.setAttribute('data-glow', lane[`${side}Glow`]);
+      glow.setAttribute('opacity', ['blue', 'green'].includes(lane[`${side}Glow`]) ? '1' : '0');
+      icon.appendChild(glow);
+    }
+    item.appendChild(icon);
+    const detail = document.createElement('div'); detail.className = 'drive-status-detail';
+    detail.hidden = true; detail.textContent = description;
+    item.addEventListener('click', event => {
+      event.stopPropagation(); detail.hidden = !detail.hidden;
+      item.setAttribute('aria-expanded', String(!detail.hidden));
+    });
+    const group = document.createElement('div'); group.append(item, detail);
+    return group;
+  }
+  let lastBadges = '';
+  function update() {
+    const page = document.getElementById('hud-page');
+    const display = !document.hidden && page?.getClientRects().length
+      && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
+    panel.hidden = !display;
+    clock.textContent = display ? `目前時間 ${display.currentTime}` : '';
+    timer.textContent = display ? `行駛時間 ${display.timer}` : '';
+    const badges = display?.badges || [];
+    const key = JSON.stringify(badges);
+    if (key !== lastBadges) { row.replaceChildren(...(badges.length ? [makeCluster(badges)] : [])); lastBadges = key; }
+    row.hidden = badges.length === 0;
+  }
+  const interval = window.setInterval(update, 250);
+  document.addEventListener('visibilitychange', update);
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    window.clearInterval(interval); document.removeEventListener('visibilitychange', update);
+  }, { once: true });
+  update();
+})();
+</script></html>

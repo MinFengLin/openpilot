@@ -38,6 +38,8 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from opendbc.car.common.conversions import Conversions
+from opendbc.car.toyota.values import ToyotaFlags
+from dragonpilot.dashy.drive_status import extract_drive_status
 
 # Main loop rate
 LOOP_RATE = 15  # Hz
@@ -457,6 +459,7 @@ TOPICS = {
 
     # Subscribe-only topics - subscribed but extracted within other extractors
     'controlsState':    {'rate': 'subscribe'},
+    'carControl':       {'rate': 'subscribe'},
 
     # Optional/dragonpilot-specific topics - comment out to disable
     'controlsStateExt': {'extractor': extract_controls_state_ext, 'rate': 'fast', 'default': {'alkaActive': False}},
@@ -507,6 +510,7 @@ def main():
     # Initialize cache from TOPICS defaults (always include all topics so
     # the frontend gets default values for dropped optional ones too).
     cache = {t: cfg.get('default') for t, cfg in TOPICS.items() if cfg.get('rate') != 'subscribe'}
+    cache['driveStatus'] = None
     cache['carParams'] = get_car_params_from_params()  # special: init from Params
 
     # Build topic lists from the filtered topics (only subscribed ones run their extractors)
@@ -547,6 +551,10 @@ def main():
             if frame_count % divider == 0:
                 cache[topic] = extractor(sm)
                 cache_dirty = True
+
+        if frame_count % LOOP_RATE == 0:
+            cache['driveStatus'] = extract_drive_status(sm, _ensure_params(), int(ToyotaFlags.TSS1_SNG))
+            cache_dirty = True
 
         # Valid-only topics - just track valid state
         for topic in valid_topics:
