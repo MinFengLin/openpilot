@@ -40,7 +40,7 @@ Each side of the assist diagram has its own outward-fading gradient.
 The adjacent ego-lane confidence is modelV2.laneLineProbs[1] (left) or [2]
 (right). A finite confidence in [0.35, 1] lights blue, matching the existing
 Tesla theme's 0.35 confidence cutoff. Fresh carState.leftBlindspot or
-rightBlindspot takes priority and lights that side green, even when its lane
+rightBlindspot takes priority and lights that side amber (#ffc300), even when its lane
 is not detected. Missing/stale/invalid model and car-state signals do not
 retain their previous glow. The cluster's existing visibility rule remains:
 with neither centering enabled nor longitudinal control active, it hides.
@@ -57,3 +57,13 @@ an em dash. The standalone preview uses the computer clock as simulated data.
 The backend payload is driveStatus.assist. The former Toyota-only gate and
 ToyotaFlags dependency have been removed. Brand-specific settings elsewhere
 in Dashy remain filtered to their applicable vehicles.
+
+## Compact viewport avoidance
+
+Below 760 px wide or 420 px high (HUD content dimensions), corner cards use
+compact styles with a central gap. The layout worker measures visible corner
+cards and places TDX below both. Short screens scale corners only when needed
+to leave room for TDX. Resize and state changes recalculate placement; hidden
+cards stop reserving space. The preview includes the actual road/TDX overlays.
+The original canvas side-light implementation is unchanged; blindspot gradients
+in the new graphic now match its amber RGB (255, 195, 0).

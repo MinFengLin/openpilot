@@ -63,3 +63,29 @@
   .drive-status-time { margin-top: 4px; }
   .drive-status-badges { margin-top: 8px; }
 }
+/* Reserve a central speed area; TDX is moved below the measured corner cards. */
+.hud-compact-layout #drive-status {
+  width: min(136px, 34%);
+  right: max(8px, env(safe-area-inset-right));
+  top: max(8px, env(safe-area-inset-top));
+  transform: scale(var(--hud-corner-scale, 1));
+  transform-origin: top right;
+}
+.hud-compact-layout .drive-status-times,
+.hud-compact-layout .drive-status-badges { padding: 6px; border-radius: 10px; }
+.hud-compact-layout .drive-status-clock { font-size: clamp(16px, 3.8vw, 22px); }
+.hud-compact-layout .drive-status-time { font-size: 10px; gap: 3px; margin-top: 4px; }
+.hud-compact-layout .drive-status-time::before { font-size: 8px; }
+.hud-compact-layout .drive-status-badges { margin-top: 6px; }
+.hud-compact-layout #road-info-hud {
+  width: min(100px, 26%);
+  left: max(8px, env(safe-area-inset-left));
+  top: max(8px, env(safe-area-inset-top));
+  transform: scale(var(--hud-corner-scale, 1));
+  transform-origin: top left;
+}
+.hud-compact-layout .road-info-limit { width: 46px; height: 46px; border-width: 4px; font-size: 21px; }
+.hud-compact-layout .road-info-name { font-size: 11px; padding: 3px 4px; }
+.hud-compact-layout .road-info-ahead { font-size: 10px; padding: 4px; overflow-wrap: anywhere; }
+.hud-compact-layout #traffic-hud { max-width: calc(100% - 16px); font-size: 13px; }
+.hud-compact-layout .traffic-hud-speed { white-space: normal; }

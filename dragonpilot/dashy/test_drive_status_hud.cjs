@@ -82,9 +82,9 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
   assert.ok(paths()[4].attributes.transform.includes('translate(60 24)'));
   sm.driveStatus.assist.leadDetected = false; tick();
   assert.equal(row.children[0].children[0].children[0].children[4].attributes.opacity, '0');
-  sm.driveStatus.assist.leftGlow = 'blue'; sm.driveStatus.assist.rightGlow = 'green'; tick();
+  sm.driveStatus.assist.leftGlow = 'blue'; sm.driveStatus.assist.rightGlow = 'amber'; tick();
   assert.equal(paths()[8].attributes['data-glow'], 'blue');
-  assert.equal(paths()[9].attributes['data-glow'], 'green');
+  assert.equal(paths()[9].attributes['data-glow'], 'amber');
   assert.equal(paths()[8].attributes.opacity, '1');
   sm.driveStatus.assist.leftGlow = 'none'; tick();
   assert.equal(paths()[8].attributes.opacity, '0');

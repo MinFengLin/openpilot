@@ -79,7 +79,7 @@
     const defs = document.createElementNS(svgNS, 'defs');
     for (const side of ['left', 'right']) {
       const state = lane[`${side}Glow`];
-      const color = state === 'green' ? '#40f478' : '#29cfff';
+      const color = state === 'amber' ? '#ffc300' : '#29cfff';
       const gradient = document.createElementNS(svgNS, 'linearGradient');
       gradient.setAttribute('id', `assist-glow-${side}`);
       gradient.setAttribute('x1', side === 'left' ? '0%' : '100%');
@@ -98,7 +98,7 @@
       glow.setAttribute('fill', `url(#assist-glow-${side})`);
       glow.setAttribute('data-side', side);
       glow.setAttribute('data-glow', lane[`${side}Glow`]);
-      glow.setAttribute('opacity', ['blue', 'green'].includes(lane[`${side}Glow`]) ? '1' : '0');
+      glow.setAttribute('opacity', ['blue', 'amber'].includes(lane[`${side}Glow`]) ? '1' : '0');
       icon.appendChild(glow);
     }
     item.appendChild(icon);

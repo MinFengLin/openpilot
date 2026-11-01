@@ -63,11 +63,37 @@
   .drive-status-time { margin-top: 4px; }
   .drive-status-badges { margin-top: 8px; }
 }
+/* Reserve a central speed area; TDX is moved below the measured corner cards. */
+.hud-compact-layout #drive-status {
+  width: min(136px, 34%);
+  right: max(8px, env(safe-area-inset-right));
+  top: max(8px, env(safe-area-inset-top));
+  transform: scale(var(--hud-corner-scale, 1));
+  transform-origin: top right;
+}
+.hud-compact-layout .drive-status-times,
+.hud-compact-layout .drive-status-badges { padding: 6px; border-radius: 10px; }
+.hud-compact-layout .drive-status-clock { font-size: clamp(16px, 3.8vw, 22px); }
+.hud-compact-layout .drive-status-time { font-size: 10px; gap: 3px; margin-top: 4px; }
+.hud-compact-layout .drive-status-time::before { font-size: 8px; }
+.hud-compact-layout .drive-status-badges { margin-top: 6px; }
+.hud-compact-layout #road-info-hud {
+  width: min(100px, 26%);
+  left: max(8px, env(safe-area-inset-left));
+  top: max(8px, env(safe-area-inset-top));
+  transform: scale(var(--hud-corner-scale, 1));
+  transform-origin: top left;
+}
+.hud-compact-layout .road-info-limit { width: 46px; height: 46px; border-width: 4px; font-size: 21px; }
+.hud-compact-layout .road-info-name { font-size: 11px; padding: 3px 4px; }
+.hud-compact-layout .road-info-ahead { font-size: 10px; padding: 4px; overflow-wrap: anywhere; }
+.hud-compact-layout #traffic-hud { max-width: calc(100% - 16px); font-size: 13px; }
+.hud-compact-layout .traffic-hud-speed { white-space: normal; }
 </style><style>
 *{box-sizing:border-box}body{margin:0;background:#10151b;color:white;font:16px sans-serif}#hud-page{height:72vh;min-height:300px;position:relative;background:linear-gradient(#151c27,#182330)}#hud-page-content{position:relative;height:100%;overflow:hidden}.road{position:absolute;bottom:0;left:20%;width:60%;height:65%;background:#244446;clip-path:polygon(48% 0,52% 0,100% 100%,0 100%)}.speed{position:absolute;top:8%;left:50%;transform:translateX(-50%);text-align:center;font-size:64px}.speed small{display:block;font-size:18px;color:#9eabb6}#controls{padding:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}label{display:flex;gap:6px;align-items:center}select,button{padding:8px;background:#243141;color:white;border:1px solid #567;border-radius:6px}p{padding:0 18px;color:#aab8c6;font-size:14px}.car{position:absolute;bottom:14%;left:48%;width:36px;height:58px;background:#cdd7dd;border-radius:10px}</style>
 <div id="hud-page"><div id="hud-page-content"><div class="road"></div><div class="speed">100<small>km/h</small></div><div class="car"></div></div></div>
-<div id="controls"><label><input id="lane" type="checkbox" checked>置中開啟</label><label><input id="long" type="checkbox" checked>縱向控制中</label><label>跟車模式<select id="mode"><option value="aggressive">積極：1 條</option><option value="standard" selected>標準：2 條</option><option value="relaxed">輕鬆：3 條</option><option value="">未知</option></select></label><label><input id="leftLane" type="checkbox" checked>左車道線</label><label><input id="rightLane" type="checkbox" checked>右車道線</label><label><input id="leftBlind" type="checkbox">左盲點</label><label><input id="rightBlind" type="checkbox">右盲點</label><label><input id="connected" type="checkbox" checked>連線</label></div><p>預覽使用真正的 Dashy SVG / CSS；背景與車速為示意資料。點右上圖示可開啟詳細說明。取消連線後約 4 秒隱藏。</p>
-<script>window.sm={recv_time:{},driveStatus:null};const start=performance.now();function publish(){if(!document.getElementById('connected').checked)return;const checked=id=>document.getElementById(id).checked;sm.recv_time.driveStatus=Date.now()/1000;sm.driveStatus={currentTimeSeconds:Date.now()/1000,utcOffsetSeconds:-new Date().getTimezoneOffset()*60,uptimeSeconds:5025+Math.floor((performance.now()-start)/1000),assist:{laneCenteringEnabled:checked('lane'),lateralActive:checked('lane'),stopAndGoAvailable:true,longitudinalActive:checked('long'),followMode:document.getElementById('mode').value||null,followBars:({aggressive:1,standard:2,relaxed:3}[document.getElementById('mode').value]||0),leadDetected:true,leftGlow:checked('leftBlind')?'green':checked('leftLane')?'blue':'none',rightGlow:checked('rightBlind')?'green':checked('rightLane')?'blue':'none',stopAndGoPhase:checked('long')?'following':null}};}document.getElementById('controls').addEventListener('change',publish);publish();setInterval(publish,1000);</script><script>/* Boot elapsed time and read-only vehicle assist graphic. */
+<div id="controls"><label><input id="lane" type="checkbox" checked>置中開啟</label><label><input id="long" type="checkbox" checked>縱向控制中</label><label>跟車模式<select id="mode"><option value="aggressive">積極：1 條</option><option value="standard" selected>標準：2 條</option><option value="relaxed">輕鬆：3 條</option><option value="">未知</option></select></label><label><input id="leftLane" type="checkbox" checked>左車道線</label><label><input id="rightLane" type="checkbox" checked>右車道線</label><label><input id="leftBlind" type="checkbox">左盲點</label><label><input id="rightBlind" type="checkbox">右盲點</label><label><input id="info" type="checkbox" checked>道路資訊／TDX</label><label><input id="connected" type="checkbox" checked>連線</label></div><p>預覽使用真正的 Dashy SVG / CSS；背景與車速為示意資料。點右上圖示可開啟詳細說明。取消連線後約 4 秒隱藏。</p>
+<script>window.sm={recv_time:{},driveStatus:null};const start=performance.now();function publish(){if(!document.getElementById('connected').checked)return;const checked=id=>document.getElementById(id).checked;sm.recv_time.driveStatus=Date.now()/1000;sm.driveStatus={currentTimeSeconds:Date.now()/1000,utcOffsetSeconds:-new Date().getTimezoneOffset()*60,uptimeSeconds:5025+Math.floor((performance.now()-start)/1000),assist:{laneCenteringEnabled:checked('lane'),lateralActive:checked('lane'),stopAndGoAvailable:true,longitudinalActive:checked('long'),followMode:document.getElementById('mode').value||null,followBars:({aggressive:1,standard:2,relaxed:3}[document.getElementById('mode').value]||0),leadDetected:true,leftGlow:checked('leftBlind')?'amber':checked('leftLane')?'blue':'none',rightGlow:checked('rightBlind')?'amber':checked('rightLane')?'blue':'none',stopAndGoPhase:checked('long')?'following':null}};}document.getElementById('controls').addEventListener('change',publish);publish();setInterval(publish,1000);</script><script>/* Boot elapsed time and read-only vehicle assist graphic. */
 (() => {
   'use strict';
   function getDisplay(sm, now = Date.now()) {
@@ -148,7 +174,7 @@
     const defs = document.createElementNS(svgNS, 'defs');
     for (const side of ['left', 'right']) {
       const state = lane[`${side}Glow`];
-      const color = state === 'green' ? '#40f478' : '#29cfff';
+      const color = state === 'amber' ? '#ffc300' : '#29cfff';
       const gradient = document.createElementNS(svgNS, 'linearGradient');
       gradient.setAttribute('id', `assist-glow-${side}`);
       gradient.setAttribute('x1', side === 'left' ? '0%' : '100%');
@@ -167,7 +193,7 @@
       glow.setAttribute('fill', `url(#assist-glow-${side})`);
       glow.setAttribute('data-side', side);
       glow.setAttribute('data-glow', lane[`${side}Glow`]);
-      glow.setAttribute('opacity', ['blue', 'green'].includes(lane[`${side}Glow`]) ? '1' : '0');
+      glow.setAttribute('opacity', ['blue', 'amber'].includes(lane[`${side}Glow`]) ? '1' : '0');
       icon.appendChild(glow);
     }
     item.appendChild(icon);
@@ -201,4 +227,333 @@
   }, { once: true });
   update();
 })();
-</script></html>
+</script>
+<style>#road-info-hud {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  width: clamp(84px, 12vw, 160px);
+  z-index: 11;
+  pointer-events: none;
+  text-align: center;
+  font-family: sans-serif;
+}
+#road-info-hud[hidden], #road-info-hud [hidden] { display: none; }
+.road-info-limit {
+  width: clamp(60px, 7vw, 100px);
+  height: clamp(60px, 7vw, 100px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  border: clamp(5px, 0.6vw, 8px) solid #dc2626;
+  border-radius: 50%;
+  background: white;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(24px, 3vw, 42px);
+  font-weight: 800;
+}
+.road-info-name {
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 75%);
+  color: white;
+  font-size: clamp(12px, 1.4vw, 20px);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.road-info-ahead {
+  margin-top: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 75%);
+  color: white;
+  font-size: clamp(12px, 1.4vw, 20px);
+}
+#traffic-hud {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(76%, 760px);
+  box-sizing: border-box;
+  padding: clamp(6px, 1vh, 12px) clamp(10px, 1.5vw, 24px);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: "Geist Mono", sans-serif;
+  font-size: clamp(14px, 2.2vw, 34px);
+  line-height: 1.45;
+  text-align: center;
+  pointer-events: none;
+  z-index: 11;
+}
+#traffic-hud[hidden], #traffic-hud [hidden] { display: none; }
+.traffic-hud-speed { font-weight: 700; white-space: nowrap; }
+#traffic-hud[data-congestion="smooth"] .traffic-hud-speed { color: #86efac; }
+#traffic-hud[data-congestion="slow"] .traffic-hud-speed { color: #fde047; }
+#traffic-hud[data-congestion="congested"] .traffic-hud-speed { color: #fca5a5; }
+.traffic-hud-event { min-width: 0; max-width: 100%; overflow: hidden; text-align: left; font-size: 0.85em; }
+.traffic-hud-event span { display: inline-block; width: max-content; white-space: nowrap; }
+.traffic-hud-scroll { animation: traffic-hud-marquee var(--traffic-duration) linear 0.8s infinite alternate; }
+@keyframes traffic-hud-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--traffic-scroll)); }
+}
+@media (max-width: 480px) {
+  #traffic-hud { max-width: 92%; font-size: 14px; }
+}
+@media (max-height: 360px) {
+  #traffic-hud { padding: 3px 8px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .traffic-hud-scroll { animation-duration: calc(var(--traffic-duration) * 2); }
+}
+</style>
+<script>
+function publishRoadPreview(){
+ if(!document.getElementById('connected').checked)return;
+ const visible=document.getElementById('info').checked;
+ sm.roadInfo=visible?{roadName:'國道一號・中山高速公路',speedLimitKph:110,aheadSpeedLimitKph:80,aheadDistanceM:300}:null;
+ sm.tdx=visible?{nextSpeed:65,displayNextSpeed:'65',speedUnit:'km/h',congestion:'slow',events:[{description:'前方施工，請減速注意車道',isCurrentSection:false}]}:null;
+ sm.recv_time.roadInfo=sm.recv_time.tdx=Date.now()/1000;
+}
+publishRoadPreview();setInterval(publishRoadPreview,1000);
+document.getElementById('controls').addEventListener('change',publishRoadPreview);
+</script>
+<script>/* Display-only road information supplied by Dashy's shared server worker. */
+(() => {
+  'use strict';
+  function getRoadDisplay(sm, now = Date.now()) {
+    const info = sm?.roadInfo;
+    const received = Number(sm?.recv_time?.roadInfo) * 1000;
+    if (!info || !Number.isFinite(received) || received > now || now - received > 4000) return null;
+    const kph = info.speedLimitKph;
+    const imperial = sm?.carState?.speedUnit === 'mph';
+    const limit = Number.isFinite(kph) && kph > 0 && kph <= 200
+      ? String(Math.round(imperial ? kph / 1.609344 : kph)) : '';
+    const name = String(info.roadName || '');
+    const aheadKph = info.aheadSpeedLimitKph;
+    const distance = info.aheadDistanceM;
+    let ahead = '';
+    if (limit && Number.isFinite(aheadKph) && aheadKph > 0 && aheadKph <= 200 && aheadKph !== kph
+        && Number.isFinite(distance) && distance >= 0) {
+      const nextLimit = Math.round(imperial ? aheadKph / 1.609344 : aheadKph);
+      let dist;
+      if (!imperial) {
+        dist = distance < 50 ? 'Near' : distance >= 1000 ? `${(distance / 1000).toFixed(1)} km`
+          : `${Math.round(distance / (distance < 200 ? 10 : 100)) * (distance < 200 ? 10 : 100)} m`;
+      } else {
+        const feet = distance * 3.28084;
+        dist = feet < 100 ? 'Near' : feet >= 900 ? `${(distance * 0.000621371).toFixed(1)} mi`
+          : `${Math.round(feet / (feet < 500 ? 50 : 100)) * (feet < 500 ? 50 : 100)} ft`;
+      }
+      ahead = `AHEAD · ${nextLimit} ${imperial ? 'mph' : 'km/h'} · ${dist}`;
+    }
+    return limit || name ? { limit, name, ahead, unit: imperial ? 'mph' : 'km/h' } : null;
+  }
+  window.DashyRoadInfo = { getRoadDisplay };
+  if (typeof document === 'undefined') return;
+  const host = document.getElementById('hud-page-content');
+  if (!host) return;
+  const panel = document.createElement('div');
+  panel.id = 'road-info-hud';
+  panel.hidden = true;
+  const sign = document.createElement('div');
+  sign.className = 'road-info-limit';
+  const name = document.createElement('div');
+  name.className = 'road-info-name';
+  const ahead = document.createElement('div');
+  ahead.className = 'road-info-ahead';
+  panel.append(sign, ahead, name);
+  host.appendChild(panel);
+  function update() {
+    const page = document.getElementById('hud-page');
+    const data = !document.hidden && page?.getClientRects().length
+      && getComputedStyle(page).visibility !== 'hidden' ? getRoadDisplay(window.sm) : null;
+    panel.hidden = !data;
+    sign.textContent = data?.limit || '';
+    sign.hidden = !data?.limit;
+    sign.title = data ? `限速 ${data.limit} ${data.unit}` : '';
+    ahead.textContent = data?.ahead || '';
+    ahead.hidden = !data?.ahead;
+    name.textContent = data?.name || '';
+    name.hidden = !data?.name;
+    name.title = data?.name || '';
+  }
+  const timer = window.setInterval(update, 250);
+  document.addEventListener('visibilitychange', update);
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    window.clearInterval(timer);
+    document.removeEventListener('visibilitychange', update);
+  }, { once: true });
+  update();
+})();
+</script>
+
+<script>/* National freeway information. Display only; does not change driving targets. */
+(() => {
+  'use strict';
+  const STALE_MS = 4000;
+  const congestionLabels = { smooth: '順暢', slow: '緩慢', congested: '壅塞' };
+
+  function getDisplay(sm, now = Date.now()) {
+    const traffic = sm?.tdx;
+    const received = Number(sm?.recv_time?.tdx) * 1000;
+    if (!traffic || !Number.isFinite(received) || received > now || now - received > STALE_MS) return null;
+
+    const hasSpeed = Number.isFinite(traffic.nextSpeed) && traffic.nextSpeed > 0 && traffic.nextSpeed <= 150
+      && traffic.displayNextSpeed != null;
+    const speed = hasSpeed ? `前方車流 ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '';
+    const congestion = hasSpeed ? congestionLabels[traffic.congestion] || '' : '';
+    const events = Array.isArray(traffic.events) ? traffic.events : [];
+    const descriptions = [];
+    for (const event of events) {
+      const description = String(event.description || '');
+      if (!description) continue;
+      const text = `${event.isCurrentSection ? '目前路段' : '前方'}：${description}`;
+      descriptions.push(text);
+    }
+    if (!speed && !descriptions.length) return null;
+    return {
+      speed: [speed, congestion].filter(Boolean).join(' · '),
+      event: descriptions.join(' ／ '),
+      congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',
+    };
+  }
+
+  function getScrollMetrics(textWidth, lineWidth) {
+    const overflow = Math.max(0, textWidth - lineWidth);
+    return { overflow, duration: Math.max(2, overflow / 35) };
+  }
+
+  // Expose pure formatting for diagnostics and tests without the vehicle/UI runtime.
+  window.DashyTraffic = { getDisplay, getScrollMetrics };
+  if (typeof document === 'undefined') return;
+
+  const host = document.getElementById('hud-page-content');
+  if (!host) return;
+  const panel = document.createElement('div');
+  panel.id = 'traffic-hud';
+  panel.hidden = true;
+  const speedLine = document.createElement('div');
+  speedLine.className = 'traffic-hud-speed';
+  const eventLine = document.createElement('div');
+  eventLine.className = 'traffic-hud-event';
+  const eventText = document.createElement('span');
+  eventLine.appendChild(eventText);
+  panel.append(speedLine, eventLine);
+  host.appendChild(panel);
+
+  function clearEvent() {
+    eventLine.hidden = true;
+    eventText.classList.remove('traffic-hud-scroll');
+    eventText.textContent = '';
+    eventText.style.removeProperty('--traffic-scroll');
+    eventText.style.removeProperty('--traffic-duration');
+  }
+
+  function fitEvent() {
+    if (panel.hidden || eventLine.hidden || !eventText.textContent) {
+      eventText.classList.remove('traffic-hud-scroll');
+      return;
+    }
+    const { overflow, duration } = getScrollMetrics(eventText.scrollWidth, eventLine.clientWidth);
+    eventText.style.setProperty('--traffic-scroll', `${-overflow}px`);
+    eventText.style.setProperty('--traffic-duration', `${duration}s`);
+    eventText.classList.toggle('traffic-hud-scroll', overflow > 1);
+  }
+
+  function update() {
+    const page = document.getElementById('hud-page');
+    const display = !document.hidden && page && page.getClientRects().length
+      && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
+    panel.hidden = !display;
+    if (!display) {
+      speedLine.textContent = '';
+      clearEvent();
+      return;
+    }
+    panel.dataset.congestion = display.congestion;
+    speedLine.textContent = display.speed;
+    speedLine.hidden = !display.speed;
+    if (!display.event) {
+      clearEvent();
+      return;
+    }
+    eventLine.hidden = false;
+    if (eventText.textContent !== display.event) {
+      eventText.classList.remove('traffic-hud-scroll');
+      eventText.textContent = display.event;
+      // Commit removal before reapplying the class so a new event starts at the beginning.
+      void eventText.offsetWidth;
+    }
+    fitEvent();
+  }
+
+  const timer = window.setInterval(update, 250);
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fitEvent) : null;
+  observer?.observe(panel);
+  document.addEventListener('visibilitychange', update);
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    window.clearInterval(timer);
+    observer?.disconnect();
+    document.removeEventListener('visibilitychange', update);
+  }, { once: true });
+  update();
+})();
+</script>
+
+<script>/* Keep corner information and TDX in separate rows on small HUD viewports. */
+(() => {
+  'use strict';
+  function getLayout(width, height, cornerHeight, trafficHeight, topInset = 8) {
+    const compact = width < 760 || height < 420;
+    if (!compact) return { compact, scale: 1, top: height * 0.3 };
+    const available = Math.max(0, height - topInset - trafficHeight - 16);
+    const scale = trafficHeight && cornerHeight ? Math.min(1, available / cornerHeight) : 1;
+    const top = trafficHeight ? Math.max(height * 0.3, topInset + cornerHeight * scale + 8) : height * 0.3;
+    return { compact, scale, top };
+  }
+  window.DashyHudLayout = { getLayout };
+  if (typeof document === 'undefined') return;
+  const host = document.getElementById('hud-page-content');
+  if (!host) return;
+  function update() {
+    if (document.hidden || !host.clientWidth || !host.clientHeight) return;
+    const compact = host.clientWidth < 760 || host.clientHeight < 420;
+    host.classList.toggle('hud-compact-layout', compact);
+    const corners = ['road-info-hud', 'drive-status'].map(id => document.getElementById(id))
+      .filter(node => node && !node.hidden && node.getClientRects().length);
+    const cornerHeight = Math.max(0, ...corners.map(node => node.offsetHeight));
+    const topInset = Math.max(8, ...corners.map(node => node.offsetTop));
+    const traffic = document.getElementById('traffic-hud');
+    const trafficHeight = traffic && !traffic.hidden ? traffic.offsetHeight : 0;
+    const layout = getLayout(host.clientWidth, host.clientHeight, cornerHeight, trafficHeight, topInset);
+    host.style.setProperty('--hud-corner-scale', String(layout.scale));
+    if (traffic) {
+      if (compact) traffic.style.top = `${layout.top}px`;
+      else traffic.style.removeProperty('top');
+    }
+  }
+  const timer = window.setInterval(update, 250);
+  window.addEventListener('resize', update);
+  document.addEventListener('visibilitychange', update);
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    window.clearInterval(timer); window.removeEventListener('resize', update);
+    document.removeEventListener('visibilitychange', update);
+  }, { once: true });
+  update();
+})();
+</script>
+</html>

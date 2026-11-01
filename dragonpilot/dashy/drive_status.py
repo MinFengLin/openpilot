@@ -31,7 +31,7 @@ def extract_drive_status(sm, params):
     probs = list(model.laneLineProbs) if model is not None else []
     def side_glow(index, blindspot):
         if cs is not None and blindspot:
-            return 'green'
+            return 'amber'
         if len(probs) > index and math.isfinite(probs[index]) and 0.35 <= probs[index] <= 1:
             return 'blue'
         return 'none'

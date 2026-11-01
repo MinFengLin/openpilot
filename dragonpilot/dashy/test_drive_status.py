@@ -84,14 +84,14 @@ class TestDriveStatus(unittest.TestCase):
         sm['carState'].rightBlindspot = True
         sm['carState'].leftBlindspot = True
         state = self.extract(sm)['assist']
-        self.assertEqual((state['leftGlow'], state['rightGlow']), ('green', 'green'))
+        self.assertEqual((state['leftGlow'], state['rightGlow']), ('amber', 'amber'))
         sm.valid['carState'] = False
         self.assertEqual(self.extract(sm)['assist']['rightGlow'], 'none')
         sm.alive['modelV2'] = False
         state = self.extract(sm)['assist']
         self.assertEqual((state['leftGlow'], state['rightGlow']), ('none', 'none'))
         sm.valid['carState'] = True
-        self.assertEqual(self.extract(sm)['assist']['leftGlow'], 'green')
+        self.assertEqual(self.extract(sm)['assist']['leftGlow'], 'amber')
 
     def test_invalid_lane_confidence_does_not_glow(self):
         sm = SubMaster()
