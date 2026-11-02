@@ -1,7 +1,7 @@
 # ALKA vehicle status display
 
 This display contains no current-time or elapsed-time fields, timer UI or
-clock collection. The right-side vehicle graphic uses the full former time
+clock collection. The left-side vehicle graphic uses the full former time
 card width: clamp(136px, 15vw, 176px), limited to 42% of viewport width.
 The vehicle card follows the graphic height, without a square aspect constraint.
 The SVG crops unused vertical space (viewBox 0 16 120 84) and preserves the
@@ -41,3 +41,7 @@ space; readability is prioritized over shrinking the information again.
 The standalone preview embeds current runtime assets and has ALKA, live lead,
 longitudinal control, gap mode, lane and blindspot simulation controls.
 Actual car behavior still needs device validation.
+
+Vehicle status is anchored at the upper left; road name, current speed limit
+and ahead-limit information are anchored at the upper right. Safe-area insets
+follow the corresponding screen edge. The detail popup opens from the left.

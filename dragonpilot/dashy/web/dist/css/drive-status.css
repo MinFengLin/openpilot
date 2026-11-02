@@ -1,7 +1,7 @@
 #drive-status {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+  left: max(12px, env(safe-area-inset-left));
   width: clamp(136px, 15vw, 176px);
   max-width: 42%;
   z-index: 11;
@@ -43,7 +43,7 @@
 .assist-car { fill: #d4dadd; stroke: #89969d; stroke-width: 1.3; }
 .assist-window { fill: #26323e; }
 .assist-wheels { fill: none; stroke: #c4cdd2; stroke-width: 3; }
-.drive-status-detail { position: absolute; top: 100%; right: 0; width: 240px; max-width: 80vw; margin-top: 8px; padding: 12px; border: 1px solid #344657; border-radius: 10px; background: #111e2b; color: #cbd9e5; text-align: left; }
+.drive-status-detail { position: absolute; top: 100%; left: 0; width: 240px; max-width: 80vw; margin-top: 8px; padding: 12px; border: 1px solid #344657; border-radius: 10px; background: #111e2b; color: #cbd9e5; text-align: left; }
 /* Keep the original information sizes; small screens only reposition TDX. */
 .hud-compact-layout #traffic-hud { max-width: calc(100% - 16px); }
 .hud-compact-layout .traffic-hud-speed { white-space: normal; }

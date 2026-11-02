@@ -1,7 +1,7 @@
 #road-info-hud {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
   width: clamp(84px, 12vw, 160px);
   z-index: 11;
   pointer-events: none;
