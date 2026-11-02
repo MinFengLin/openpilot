@@ -39,7 +39,8 @@
     item.title = description; item.setAttribute('aria-label', description);
     item.setAttribute('aria-expanded', 'false');
     const icon = document.createElementNS(svgNS, 'svg');
-    icon.setAttribute('viewBox', '0 0 120 120'); icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('viewBox', '0 16 120 84');
+    icon.setAttribute('preserveAspectRatio', 'xMidYMid meet'); icon.setAttribute('aria-hidden', 'true');
     const draw = (d, className, state, opacity = '1', transform = '') => {
       const path = document.createElementNS(svgNS, 'path');
       path.setAttribute('d', d); path.setAttribute('class', className);
@@ -48,15 +49,15 @@
       icon.appendChild(path);
     };
     // The entire diagram is gated by live ALKA. Distance bars require longitudinal control.
-    draw('M42 24 12 112 22 112 47 24Z M73 24 98 112 108 112 78 24Z',
+    draw('M43 32 16 96 24 96 48 32Z M72 32 96 96 104 96 77 32Z',
       'assist-lanes', lane.state);
     for (let i = 0; i < 3; i++) {
-      const y = 56 + i * 22; const inset = 39 - i * 7;
+      const y = 55 + i * 15; const inset = 39 - i * 7;
       draw(`M${inset} ${y}H${120 - inset}L${124 - inset} ${y + 6}H${inset - 4}Z`,
         'assist-distance', follow.state, i >= 3 - follow.bars ? '1' : '0');
     }
     const steps = follow.bars ? 3 - follow.bars : 0;
-    const carTransform = `translate(60 ${14 + steps * 22}) scale(${1.1 + steps * 0.04}) translate(-60 0)`;
+    const carTransform = `translate(60 ${16 + steps * 13}) scale(${1.1 + steps * 0.04}) translate(-60 0)`;
     const carOpacity = follow.leadDetected ? '1' : '0';
     draw('M48 15 51 6H69L72 15 76 18V29H44V18Z', 'assist-car', follow.state, carOpacity, carTransform);
     draw('M51 15 54 9H66L69 15Z', 'assist-window', follow.state, carOpacity, carTransform);
@@ -79,7 +80,7 @@
     icon.appendChild(defs);
     for (const side of ['left', 'right']) {
       const glow = document.createElementNS(svgNS, 'path');
-      glow.setAttribute('d', side === 'left' ? 'M36 24 0 112H12L42 24Z' : 'M78 24 108 112H120L84 24Z');
+      glow.setAttribute('d', side === 'left' ? 'M37 32 6 96H16L43 32Z' : 'M77 32 104 96H114L83 32Z');
       glow.setAttribute('fill', `url(#assist-glow-${side})`);
       glow.setAttribute('data-side', side);
       glow.setAttribute('data-glow', lane[`${side}Glow`]);
@@ -93,7 +94,8 @@
       event.stopPropagation(); detail.hidden = !detail.hidden;
       item.setAttribute('aria-expanded', String(!detail.hidden));
     });
-    const group = document.createElement('div'); group.append(item, detail);
+    const group = document.createElement('div'); group.className = 'drive-status-graphic';
+    group.append(item, detail);
     return group;
   }
   let lastBadges = '';

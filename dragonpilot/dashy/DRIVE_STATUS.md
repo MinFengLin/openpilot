@@ -3,8 +3,9 @@
 This display contains no current-time or elapsed-time fields, timer UI or
 clock collection. The right-side vehicle graphic uses the full former time
 card width: clamp(136px, 15vw, 176px), limited to 42% of viewport width.
-The vehicle card and SVG use a square (1:1, 120×120) layout. Perspective lanes
-and gap positions fit inside the square; the car retains its own aspect ratio.
+The vehicle card follows the graphic height, without a square aspect constraint.
+The SVG crops unused vertical space (viewBox 0 16 120 84) and preserves the
+car and lane geometry proportions.
 
 ## Visibility and signals
 

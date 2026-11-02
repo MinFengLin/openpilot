@@ -59,7 +59,9 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
   assert.equal(panel.children.length, 1);
   assert.equal(panel.hidden, false); assert.equal(row.children.length, 1);
   assert.equal(row.children[0].children[0].children[0].children.length, 10);
-  assert.equal(row.children[0].children[0].children[0].attributes.viewBox, '0 0 120 120');
+  assert.equal(row.children[0].className, 'drive-status-graphic');
+  assert.equal(row.children[0].children[0].children[0].attributes.viewBox, '0 16 120 84');
+  assert.equal(row.children[0].children[0].children[0].attributes.preserveAspectRatio, 'xMidYMid meet');
   assert.equal(row.children[0].children[0].children.length, 1); // SVG only; no visible status labels
   sm.driveStatus.assist.followMode = 'relaxed'; sm.driveStatus.assist.followBars = 3; tick();
   assert.ok(row.children[0].children[1].textContent.includes('輕鬆'));
@@ -72,7 +74,7 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
   sm.driveStatus.assist.followBars = 1; tick();
   assert.deepEqual(paths().slice(1, 4).map(p => p.attributes.opacity), ['0', '0', '1']);
   assert.notEqual(paths()[4].attributes.transform, far);
-  assert.ok(paths()[4].attributes.transform.includes('translate(60 58)'));
+  assert.ok(paths()[4].attributes.transform.includes('translate(60 42)'));
   sm.driveStatus.assist.leadDetected = false; tick();
   assert.equal(row.children[0].children[0].children[0].children[4].attributes.opacity, '0');
   sm.driveStatus.assist.leftGlow = 'blue'; sm.driveStatus.assist.rightGlow = 'amber'; tick();
