@@ -6,7 +6,7 @@ from openpilot.selfdrive.ui import UI_BORDER_SIZE
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.onroad.alert_renderer import AlertRenderer
 from openpilot.selfdrive.ui.onroad.driver_state import DriverStateRenderer
-from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer
+from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer, PERF_FONT_SIZE, PERF_PADDING, PERF_MARGIN_BOTTOM
 from openpilot.selfdrive.ui.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import gui_app
@@ -104,7 +104,13 @@ class AugmentedRoadView(CameraView):
       self._hud_renderer.render(self._content_rect)
     self.alert_renderer.render(self._content_rect)
     if not hide_hud:
-      self.driver_state_renderer.render(self._content_rect)
+      # DriverStateRenderer already reserves UI_BORDER_SIZE below its circle.
+      # Lift it only enough to leave 1px above the machine-status bar.
+      status_bar_height = PERF_FONT_SIZE + 2 * PERF_PADDING + PERF_MARGIN_BOTTOM
+      driver_bottom_inset = max(0, status_bar_height + 1 - UI_BORDER_SIZE)
+      driver_rect = rl.Rectangle(self._content_rect.x, self._content_rect.y,
+                                 self._content_rect.width, max(0, self._content_rect.height - driver_bottom_inset))
+      self.driver_state_renderer.render(driver_rect)
 
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
