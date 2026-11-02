@@ -1,19 +1,12 @@
 """Display-only boot time and vehicle assist status for Dashy."""
 import math
-import time
 
 
-def boot_seconds():
-    # CLOCK_BOOTTIME includes suspend and survives daemon/browser restarts.
-    return max(0, int(time.clock_gettime(time.CLOCK_BOOTTIME)))
-
-
-def extract_drive_status(sm, params):
+def extract_drive_status(sm):
     def fresh(topic):
         return sm.alive.get(topic, False) and sm.valid.get(topic, False)
 
-    result = {'uptimeSeconds': boot_seconds(), 'currentTimeSeconds': time.time(),
-              'utcOffsetSeconds': time.localtime().tm_gmtoff, 'assist': None}
+    result = {'assist': None}
     if not fresh('carParams'):
         return result
     cp = sm['carParams']
@@ -36,7 +29,7 @@ def extract_drive_status(sm, params):
             return 'blue'
         return 'none'
     result['assist'] = {
-        'laneCenteringEnabled': params.get_bool('dp_lane_centering'),
+        'alkaActive': bool(sm['controlsStateExt'].alkaActive) if fresh('controlsStateExt') else False,
         'lateralActive': bool(control.latActive) if control is not None else None,
         'longitudinalActive': long_active,
         'leadDetected': bool(lead.status) if lead is not None else None,

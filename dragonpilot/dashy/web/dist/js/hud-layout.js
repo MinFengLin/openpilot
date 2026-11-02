@@ -4,9 +4,8 @@
   function getLayout(width, height, cornerHeight, trafficHeight, topInset = 8) {
     const compact = width < 760 || height < 420;
     if (!compact) return { compact, scale: 1, top: height * 0.3 };
-    const available = Math.max(0, height - topInset - trafficHeight - 16);
-    const scale = trafficHeight && cornerHeight ? Math.min(1, available / cornerHeight) : 1;
-    const top = trafficHeight ? Math.max(height * 0.3, topInset + cornerHeight * scale + 8) : height * 0.3;
+    const scale = 1;
+    const top = trafficHeight ? Math.max(height * 0.3, topInset + cornerHeight + 8) : height * 0.3;
     return { compact, scale, top };
   }
   window.DashyHudLayout = { getLayout };
@@ -24,7 +23,7 @@
     const traffic = document.getElementById('traffic-hud');
     const trafficHeight = traffic && !traffic.hidden ? traffic.offsetHeight : 0;
     const layout = getLayout(host.clientWidth, host.clientHeight, cornerHeight, trafficHeight, topInset);
-    host.style.setProperty('--hud-corner-scale', String(layout.scale));
+    host.style.removeProperty('--hud-corner-scale');
     if (traffic) {
       if (compact) traffic.style.top = `${layout.top}px`;
       else traffic.style.removeProperty('top');

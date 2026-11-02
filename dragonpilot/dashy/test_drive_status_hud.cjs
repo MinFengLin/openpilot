@@ -7,20 +7,14 @@ const source = fs.readFileSync(path.join(__dirname, 'web/dist/js/drive-status.js
 const context = {window: {}};
 vm.runInNewContext(source, context);
 const {getDisplay} = context.window.DashyDriveStatus;
-const state = () => ({recv_time: {driveStatus: 10}, driveStatus: {uptimeSeconds: 3661, assist: {
-  laneCenteringEnabled: true, lateralActive: true, stopAndGoAvailable: true, longitudinalActive: true, followMode: 'standard', followBars: 2, leadDetected: true,
+const state = () => ({recv_time: {driveStatus: 10}, driveStatus: {assist: {
+  alkaActive: true, lateralActive: true, stopAndGoAvailable: true, longitudinalActive: true, followMode: 'standard', followBars: 2, leadDetected: true,
 }}});
-test('device uptime persists across browser initialization and formats large hours', () => {
-  assert.equal(getDisplay(state(), 10000).timer, '01:01:01');
-  assert.equal(getDisplay(state(), 12000).timer, '01:01:03');
-  const sm = state(); sm.driveStatus.uptimeSeconds = 360000;
-  assert.equal(getDisplay(sm, 10000).timer, '100:00:00');
-});
-test('centering switch lights sides independently of lateral control', () => {
+test('live ALKA gates the entire block independently of longitudinal control', () => {
   const sm = state(); sm.driveStatus.assist.lateralActive = false;
   assert.equal(getDisplay(sm, 10000).badges[0].state, 'enabled');
-  sm.driveStatus.assist.laneCenteringEnabled = false;
-  assert.equal(getDisplay(sm, 10000).badges[0].state, 'off');
+  sm.driveStatus.assist.alkaActive = false;
+  assert.equal(getDisplay(sm, 10000).badges.length, 0);
 });
 test('distance bars require actual longitudinal control; inactive cluster hides', () => {
   const sm = state(); const t = sm.driveStatus.assist;
@@ -30,19 +24,18 @@ test('distance bars require actual longitudinal control; inactive cluster hides'
   }
   t.longitudinalActive = false;
   assert.equal(getDisplay(sm, 10000).badges[1].bars, 0);
-  t.laneCenteringEnabled = false;
+  t.alkaActive = false;
   assert.equal(getDisplay(sm, 10000).badges.length, 0);
   t.longitudinalActive = null; t.lateralActive = true;
   assert.equal(getDisplay(sm, 10000).badges.length, 0);
 });
-test('missing vehicle metadata keeps only the clock; stale, missing and malformed payloads hide', () => {
+test('missing metadata and stale or missing payloads hide the assist display', () => {
   const sm = state(); sm.driveStatus.assist = null;
   assert.equal(getDisplay(sm, 10000).badges.length, 0);
   assert.equal(getDisplay(sm, 14001), null);
   assert.equal(getDisplay(sm, 9999), null);
   assert.equal(getDisplay({}, 10000), null);
-  sm.driveStatus.uptimeSeconds = -1;
-  assert.equal(getDisplay(sm, 10000), null);
+  assert.equal(getDisplay(sm, 10000).timer, undefined);
 });
 test('DOM creates SVG badges and clears on a disconnected stream', () => {
   class Element {
@@ -62,11 +55,11 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
       createElement: () => new Element(), createElementNS: () => new Element(), addEventListener() {}},
     getComputedStyle: () => ({visibility: 'visible'})};
   vm.runInNewContext(source, dom);
-  const panel = host.children[0]; const row = panel.children[1];
-  assert.equal(panel.children[0].className, 'drive-status-times');
-  assert.equal(panel.children[0].children.length, 2);
+  const panel = host.children[0]; const row = panel.children[0];
+  assert.equal(panel.children.length, 1);
   assert.equal(panel.hidden, false); assert.equal(row.children.length, 1);
   assert.equal(row.children[0].children[0].children[0].children.length, 10);
+  assert.equal(row.children[0].children[0].children[0].attributes.viewBox, '0 0 120 120');
   assert.equal(row.children[0].children[0].children.length, 1); // SVG only; no visible status labels
   sm.driveStatus.assist.followMode = 'relaxed'; sm.driveStatus.assist.followBars = 3; tick();
   assert.ok(row.children[0].children[1].textContent.includes('輕鬆'));
@@ -79,7 +72,7 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
   sm.driveStatus.assist.followBars = 1; tick();
   assert.deepEqual(paths().slice(1, 4).map(p => p.attributes.opacity), ['0', '0', '1']);
   assert.notEqual(paths()[4].attributes.transform, far);
-  assert.ok(paths()[4].attributes.transform.includes('translate(60 24)'));
+  assert.ok(paths()[4].attributes.transform.includes('translate(60 58)'));
   sm.driveStatus.assist.leadDetected = false; tick();
   assert.equal(row.children[0].children[0].children[0].children[4].attributes.opacity, '0');
   sm.driveStatus.assist.leftGlow = 'blue'; sm.driveStatus.assist.rightGlow = 'amber'; tick();
@@ -88,19 +81,22 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
   assert.equal(paths()[8].attributes.opacity, '1');
   sm.driveStatus.assist.leftGlow = 'none'; tick();
   assert.equal(paths()[8].attributes.opacity, '0');
-  sm.driveStatus.assist.laneCenteringEnabled = false;
+  sm.driveStatus.assist.alkaActive = false;
   sm.driveStatus.assist.longitudinalActive = false; tick();
-  assert.equal(row.hidden, true); assert.equal(panel.hidden, false);
+  assert.equal(row.hidden, true); assert.equal(panel.hidden, true);
   assert.equal(row.children.length, 0);
   sm.recv_time.driveStatus = (Date.now() - 5000) / 1000; tick();
   assert.equal(panel.hidden, true); assert.equal(row.children.length, 0);
 });
 
-test('current time follows vehicle clock and offset, independently of phone timezone', () => {
-  const sm = state();
-  sm.driveStatus.currentTimeSeconds = Date.UTC(2026, 10, 1, 15, 59, 59) / 1000;
-  sm.driveStatus.utcOffsetSeconds = 8 * 3600;
-  assert.equal(getDisplay(sm, 10000).currentTime, '23:59:59');
-  assert.equal(getDisplay(sm, 11000).currentTime, '00:00:00');
-  assert.equal(getDisplay(sm, 11000).timer, '01:01:02');
+
+test('front car follows live lead detection even when longitudinal control is inactive', () => {
+  const sm = state(); sm.driveStatus.assist.longitudinalActive = false;
+  const display = getDisplay(sm, 10000);
+  assert.equal(display.badges[1].bars, 0);
+  assert.equal(display.badges[1].leadDetected, true);
+  sm.driveStatus.assist.leadDetected = false;
+  assert.equal(getDisplay(sm, 10000).badges[1].leadDetected, false);
+  sm.driveStatus.assist.alkaActive = false;
+  assert.equal(getDisplay(sm, 10000).badges.length, 0);
 });

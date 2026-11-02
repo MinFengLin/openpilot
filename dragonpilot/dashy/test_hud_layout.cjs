@@ -11,7 +11,7 @@ test('portrait, landscape and short screens keep TDX below both corner cards', (
     const result = getLayout(w,h,corner,traffic);
     assert.equal(result.compact, true);
     assert.ok(result.top >= 8 + corner * result.scale + 8 - 0.01);
-    assert.ok(result.top + traffic <= h - 8 + 0.01);
+    assert.equal(result.scale, 1);
   }
 });
 test('large screens keep original layout; hidden traffic does not shrink corners', () => {
@@ -23,7 +23,7 @@ test('layout worker reacts to card height changes and clears inline top on large
   let tick;
   const styles = {};
   const host = {clientWidth: 568, clientHeight: 240, classList: {toggle() {}},
-    style: {setProperty: (key,value) => {styles[key]=value;}}};
+    style: {removeProperty: key => {delete styles[key];}}};
   const road = {hidden: false, offsetHeight: 180, offsetTop: 8, getClientRects: () => [{}]};
   const drive = {hidden: false, offsetHeight: 120, offsetTop: 8, getClientRects: () => [{}]};
   const traffic = {hidden: false, offsetHeight: 44, style: {removeProperty(key) {delete this[key];}}};
@@ -31,10 +31,10 @@ test('layout worker reacts to card height changes and clears inline top on large
   const dom = {window: {setInterval: fn => {tick=fn;},addEventListener() {}},
     document: {hidden:false,getElementById:id=>nodes[id],addEventListener() {}}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'web/dist/js/hud-layout.js'),'utf8'),dom);
-  assert.equal(traffic.style.top,'188px');
-  assert.ok(Number(styles['--hud-corner-scale']) < 1);
+  assert.equal(traffic.style.top,'196px');
+  assert.equal(styles['--hud-corner-scale'], undefined);
   road.hidden=true;tick();assert.equal(traffic.style.top,'136px');
   host.clientWidth=1280;host.clientHeight=720;tick();
   assert.equal(traffic.style.top,undefined);
-  assert.equal(styles['--hud-corner-scale'],'1');
+  assert.equal(styles['--hud-corner-scale'],undefined);
 });

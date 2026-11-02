@@ -552,7 +552,7 @@ def main():
                 cache_dirty = True
 
         if frame_count % LOOP_RATE == 0:
-            cache['driveStatus'] = extract_drive_status(sm, _ensure_params())
+            cache['driveStatus'] = extract_drive_status(sm)
             cache_dirty = True
 
         # Valid-only topics - just track valid state

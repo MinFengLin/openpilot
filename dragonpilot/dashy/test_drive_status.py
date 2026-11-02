@@ -1,9 +1,7 @@
-import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
-from dragonpilot.dashy.drive_status import boot_seconds, extract_drive_status
+from dragonpilot.dashy.drive_status import extract_drive_status
 
 
 class SubMaster(dict):
@@ -13,27 +11,17 @@ class SubMaster(dict):
                          carControl=SimpleNamespace(latActive=True, longActive=True, hudControl=SimpleNamespace(leadDistanceBars=2)),
                          modelV2=SimpleNamespace(laneLineProbs=[0.9, 0.8, 0.1, 0.9]),
                          carState=SimpleNamespace(standstill=False, leftBlindspot=False, rightBlindspot=False), radarState=SimpleNamespace(leadOne=SimpleNamespace(status=True, dRel=25.0)),
-                         selfdriveState=SimpleNamespace(personality='standard'))
+                         controlsStateExt=SimpleNamespace(alkaActive=True), selfdriveState=SimpleNamespace(personality='standard'))
         self.alive = {key: True for key in self}
         self.valid = {key: True for key in self}
 
 
 class TestDriveStatus(unittest.TestCase):
-    def setUp(self):
-        self.params = SimpleNamespace(get_bool=lambda key: key == 'dp_lane_centering')
-
     def extract(self, sm):
-        with patch('dragonpilot.dashy.drive_status.boot_seconds', return_value=3661):
-            return extract_drive_status(sm, self.params)
-
-    def test_timer_uses_device_boot_clock(self):
-        with patch('time.clock_gettime', return_value=3661.9) as clock:
-            self.assertEqual(boot_seconds(), 3661)
-            clock.assert_called_once_with(time.CLOCK_BOOTTIME)
+        return extract_drive_status(sm)
 
     def test_vehicle_modes_and_active_control(self):
         result = self.extract(SubMaster())
-        self.assertEqual(result['uptimeSeconds'], 3661)
         self.assertTrue(result['assist']['lateralActive'])
         self.assertTrue(result['assist']['leadDetected'])
         self.assertEqual(result['assist']['leadDistanceMeters'], 25.0)
@@ -70,7 +58,7 @@ class TestDriveStatus(unittest.TestCase):
         sm['carState'].standstill = True
         sm['radarState'].leadOne.status = False
         state = self.extract(sm)['assist']
-        self.assertTrue(state['laneCenteringEnabled'])
+        self.assertTrue(state['alkaActive'])
         self.assertFalse(state['lateralActive'])
         self.assertFalse(state['leadDetected'])
         sm.alive['carControl'] = False
@@ -100,8 +88,15 @@ class TestDriveStatus(unittest.TestCase):
             state = self.extract(sm)['assist']
             self.assertEqual((state['leftGlow'], state['rightGlow']), ('none', 'none'))
 
-    def test_current_time_comes_from_vehicle(self):
-        with patch('time.time', return_value=1793520000), patch('time.localtime', return_value=SimpleNamespace(tm_gmtoff=28800)):
-            result = self.extract(SubMaster())
-        self.assertEqual(result['currentTimeSeconds'], 1793520000)
-        self.assertEqual(result['utcOffsetSeconds'], 28800)
+    def test_alka_uses_live_state_not_setting_and_expires(self):
+        sm = SubMaster()
+        self.assertTrue(self.extract(sm)['assist']['alkaActive'])
+        sm['controlsStateExt'].alkaActive = False
+        self.assertFalse(self.extract(sm)['assist']['alkaActive'])
+        sm['controlsStateExt'].alkaActive = True
+        for field in ('alive', 'valid'):
+            getattr(sm, field)['controlsStateExt'] = False
+            self.assertFalse(self.extract(sm)['assist']['alkaActive'])
+            getattr(sm, field)['controlsStateExt'] = True
+        self.assertNotIn('uptimeSeconds', self.extract(sm))
+        self.assertNotIn('currentTimeSeconds', self.extract(sm))

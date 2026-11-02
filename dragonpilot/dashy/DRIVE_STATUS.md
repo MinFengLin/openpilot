@@ -1,69 +1,42 @@
-# Upper-right boot clock and vehicle assist graphic
+# ALKA vehicle status display
 
-The clock uses Linux CLOCK_BOOTTIME, including offroad time and suspend.
-Refreshing the phone or restarting dashyd does not reset it; rebooting does.
+This display contains no current-time or elapsed-time fields, timer UI or
+clock collection. The right-side vehicle graphic uses the full former time
+card width: clamp(136px, 15vw, 176px), limited to 42% of viewport width.
+The vehicle card and SVG use a square (1:1, 120×120) layout. Perspective lanes
+and gap positions fit inside the square; the car retains its own aspect ratio.
 
-The vehicle SVG follows these display rules:
+## Visibility and signals
 
-- Side lane lines light when the DP lane-centering setting is enabled.
-  This is intentionally the setting, not proof of active lateral actuation.
-- Distance bars appear only while valid carControl.longActive is true.
-  Their count is the actual carControl.hudControl.leadDistanceBars command:
-  1 aggressive, 2 standard, 3 relaxed. These are commanded bars, not stock
-  instrument-cluster PCM feedback or a measured following distance.
-- Bars disappear from top to bottom: 3 to 2 hides the upper bar; 2 to 1
-  hides the middle bar. Removed bars have zero opacity.
-- The front-car silhouette requires fresh radarState.leadOne.status.
-  It moves downward and grows slightly as the selected bar count decreases.
-  This position illustrates the selected gap mode, not radar dRel.
-- No separate steering-wheel or Stop & Go icon is displayed underneath.
-- With both centering off and longitudinal control inactive/unknown, the
-  entire assist graphic hides. The boot clock remains.
-
-All vehicle brands use the same shared signals; there is no brand whitelist.
-Without valid carParams only the clock is shown. Stock ACC control is not inferred.
-The backend refreshes once per second; four seconds without a received
-payload hides the panel. All graphics are display-only. Tap the graphic for
-an explanation; labels are not visible by default.
-
-`preview-drive-status.html` embeds the actual SVG/CSS with simulated controls.
-Actual phone rendering and vehicle behavior still require device validation.
-
-```sh
-python3 -m unittest dragonpilot/dashy/test_drive_status.py
-node dragonpilot/dashy/test_drive_status_hud.cjs
-```
+- The entire block requires fresh, valid controlsStateExt.alkaActive = true,
+  matching the existing ALKA badge beside the speed. DP lane-centering settings,
+  cruise engagement and longitudinal control alone cannot display the block.
+- The two side lane lines are visible whenever the ALKA block is visible.
+- Distance bars require actual carControl.longActive and use the commanded
+  hudControl.leadDistanceBars: 1 aggressive, 2 standard, 3 relaxed.
+- Bars disappear from top to bottom. The front car moves closer and grows
+  slightly with fewer selected bars; its position illustrates gap mode,
+  not a measured radar distance.
+- The front car is visible only if fresh radarState.leadOne.status is true,
+  independently of longitudinal engagement. Without a lead, the distance bars
+  can remain visible but the car is hidden.
+- Missing/stale/invalid ALKA hides the whole block. A disconnected browser
+  hides it after four seconds. Behavior is not limited to a vehicle brand.
 
 ## Side glow
 
-Each side of the assist diagram has its own outward-fading gradient.
-The adjacent ego-lane confidence is modelV2.laneLineProbs[1] (left) or [2]
-(right). A finite confidence in [0.35, 1] lights blue, matching the existing
-Tesla theme's 0.35 confidence cutoff. Fresh carState.leftBlindspot or
-rightBlindspot takes priority and lights that side amber (#ffc300), even when its lane
-is not detected. Missing/stale/invalid model and car-state signals do not
-retain their previous glow. The cluster's existing visibility rule remains:
-with neither centering enabled nor longitudinal control active, it hides.
-The preview has simulated independent lane and blindspot switches.
+Fresh modelV2.laneLineProbs[1]/[2] in [0.35, 1] enables the left/right blue
+gradient. Fresh carState.leftBlindspot/rightBlindspot overrides its side with
+amber (#ffc300), matching the original canvas blindspot color.
 
-## Time labels
+## Layout
 
-The top line shows vehicle local wall-clock time, including its UTC offset,
-interpolated between updates independently of the phone timezone. The second
-line is labeled 行駛時間 but still measures time since device boot, including
-offroad time; it is not accumulated moving time. Unknown wall-clock data shows
-an em dash. The standalone preview uses the computer clock as simulated data.
+Road names, speed signs, road preview text and the vehicle panel retain their
+original sizes. Compact-layout CSS no longer reduces these fonts, widths or
+sign dimensions, and no corner scale transform is applied. TDX is repositioned
+below visible corner cards. Extremely short viewports may require more vertical
+space; readability is prioritized over shrinking the information again.
 
-The backend payload is driveStatus.assist. The former Toyota-only gate and
-ToyotaFlags dependency have been removed. Brand-specific settings elsewhere
-in Dashy remain filtered to their applicable vehicles.
-
-## Compact viewport avoidance
-
-Below 760 px wide or 420 px high (HUD content dimensions), corner cards use
-compact styles with a central gap. The layout worker measures visible corner
-cards and places TDX below both. Short screens scale corners only when needed
-to leave room for TDX. Resize and state changes recalculate placement; hidden
-cards stop reserving space. The preview includes the actual road/TDX overlays.
-The original canvas side-light implementation is unchanged; blindspot gradients
-in the new graphic now match its amber RGB (255, 195, 0).
+The standalone preview embeds current runtime assets and has ALKA, live lead,
+longitudinal control, gap mode, lane and blindspot simulation controls.
+Actual car behavior still needs device validation.
