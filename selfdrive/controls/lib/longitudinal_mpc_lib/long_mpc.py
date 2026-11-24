@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+import math
 import os
 import time
 import numpy as np
 from cereal import log
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.common.swaglog import cloudlog
 # WARNING: imports outside of constants will not trigger a rebuild
@@ -62,6 +64,10 @@ COMFORT_BRAKE = 2.5
 CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.6
 MIN_X_LEAD_FACTOR = 0.5
+CUSTOM_STOP_DISTANCE_MIN = 3.5
+CUSTOM_STOP_DISTANCE_MAX = 6.0
+CUSTOM_STOP_DISTANCE_DEFAULT = 4.0
+CUSTOM_STOP_DISTANCE_POLL_S = 1.0
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
@@ -210,6 +216,9 @@ def gen_long_ocp():
 class LongitudinalMpc:
   def __init__(self, dt=DT_MDL):
     self.dt = dt
+    self.settings = Params()
+    self.custom_stop_distance = None
+    self._stop_distance_poll_t = float("-inf")
     self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.reset()
     self.source = LongitudinalPlanSource.cruise
@@ -261,6 +270,21 @@ class LongitudinalMpc:
     constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, DANGER_ZONE_COST]
     self.set_cost_weights(cost_weights, constraint_cost_weights)
 
+  def get_current_stop_distance(self, personality):
+    now = time.monotonic()
+    if now - self._stop_distance_poll_t >= CUSTOM_STOP_DISTANCE_POLL_S:
+      self._stop_distance_poll_t = now
+      self.custom_stop_distance = None
+      if self.settings.get_bool("dp_lon_custom_stop_distance_enabled"):
+        try:
+          distance = float(self.settings.get("dp_lon_custom_stop_distance"))
+          if not math.isfinite(distance):
+            distance = CUSTOM_STOP_DISTANCE_DEFAULT
+        except (TypeError, ValueError, OverflowError):
+          distance = CUSTOM_STOP_DISTANCE_DEFAULT
+        self.custom_stop_distance = min(CUSTOM_STOP_DISTANCE_MAX, max(CUSTOM_STOP_DISTANCE_MIN, distance))
+    return get_STOP_DISTANCE(personality) if self.custom_stop_distance is None else self.custom_stop_distance
+
   def set_cur_state(self, v, a):
     v_prev = self.x0[1]
     self.x0[1] = v
@@ -305,7 +329,7 @@ class LongitudinalMpc:
     v_ego = self.x0[1]
     
     t_follow = get_T_FOLLOW(personality)
-    stop_distance = get_STOP_DISTANCE(personality)
+    stop_distance = self.get_current_stop_distance(personality)
     self.set_weights(personality=personality)
     
     a_cruise_min = a_cruise_min_override if a_cruise_min_override is not None else CRUISE_MIN_ACCEL
