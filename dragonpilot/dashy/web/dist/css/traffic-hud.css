@@ -16,6 +16,7 @@
   pointer-events: none;
   z-index: 11;
 }
+#traffic-hud:has(.traffic-hud-lanes:not([hidden]) li:nth-child(5)) { min-width: min(300px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
 #traffic-hud[hidden], #traffic-hud [hidden] { display: none; }
 .traffic-hud-speed { font-weight: 700; }
 #traffic-hud[data-congestion="smooth"] .traffic-hud-speed { color: #86efac; }
@@ -49,7 +50,8 @@
   list-style: none;
 }
 .traffic-hud-lane-list li {
-  flex: 1 0 3em;
+  flex: 0 1 auto;
+  min-width: 2.75em;
   display: grid;
   justify-items: center;
   padding: 2px 4px;
@@ -57,7 +59,7 @@
   background: rgb(255 255 255 / 14%);
   line-height: 1.25;
 }
-.traffic-hud-lane-list span { font-size: 0.8em; }
+.traffic-hud-lane-list span { font-size: 0.8em; white-space: nowrap; }
 .traffic-hud-lane-list strong { font-variant-numeric: tabular-nums; }
 @media (max-height: 360px) {
   #traffic-hud { padding: 3px 8px; font-size: 13px; }

@@ -475,20 +475,26 @@ class FreewayLaneClient:
     response.raise_for_status()
     return freeway_lanes.read_xml(response.content, tag)
 
-  def update(self, monotonic_now):
-    try:
-      if monotonic_now >= self._next_metadata_update:
-        self._next_metadata_update = monotonic_now + VD_METADATA_RETRY_S
-        sections = self._download('Section', 'SectionList')
-        stations = self._download('VD', 'VDList')
-        version = sections.findtext('LinkVersion')
-        section_map = freeway_lanes.parse_sections(sections)
-        station_map = freeway_lanes.parse_stations(stations)
-        if not version or version != stations.findtext('LinkVersion') or not section_map or not station_map:
-          raise ValueError('Invalid VD metadata or inconsistent link versions')
-        self._metadata = (version, section_map, station_map)
-        self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
+  def _update_metadata(self, monotonic_now):
+    self._next_metadata_update = monotonic_now + VD_METADATA_RETRY_S
+    sections = self._download('Section', 'SectionList')
+    stations = self._download('VD', 'VDList')
+    version = sections.findtext('LinkVersion')
+    section_map = freeway_lanes.parse_sections(sections)
+    station_map = freeway_lanes.parse_stations(stations)
+    if not version or version != stations.findtext('LinkVersion') or not section_map or not station_map:
+      raise ValueError('Invalid VD metadata or inconsistent link versions')
+    self._metadata = (version, section_map, station_map)
+    self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
 
+  def update(self, monotonic_now):
+    if monotonic_now >= self._next_metadata_update:
+      try:
+        self._update_metadata(monotonic_now)
+      except (requests.RequestException, ET.ParseError, ValueError) as e:
+        cloudlog.warning(f"tdxd: 高公局偵測器清單更新失敗: {e}")
+
+    try:
       if self._metadata is None:
         return
 
@@ -586,6 +592,7 @@ def main():
 
     gps_source = None
     is_gps_ready = False
+    lane_gps_ok = False
 
     if sm.updated.get('liveGPS', False):
       live_gps = sm['liveGPS']
@@ -596,6 +603,7 @@ def main():
         bearing = live_gps.bearingDeg
         is_gps_ready = True
         gps_source = 'liveGPS'
+        lane_gps_ok = 0 < live_gps.horizontalAccuracy <= VD_MATCH_DISTANCE_M
 
     if not is_gps_ready and sm.updated.get('gpsLocationExternal', False):
       raw_gps = sm['gpsLocationExternal']
@@ -606,8 +614,10 @@ def main():
         bearing = raw_gps.bearingDeg
         is_gps_ready = True
         gps_source = 'gpsLocationExternal'
+        lane_gps_ok = raw_gps.hasFix and 0 < acc <= VD_MATCH_DISTANCE_M
 
-    if not (is_gps_ready and (current_time - last_calc_time >= CALC_INTERVAL_S)):
+    if (not is_gps_ready or not all(map(math.isfinite, (lat, lon, bearing)))
+        or current_time - last_calc_time < CALC_INTERVAL_S):
       continue
     last_calc_time = current_time
 
@@ -657,7 +667,7 @@ def main():
     tdx.nextSectionId = str(stable_ahead_section) if stable_ahead_section else ""
     tdx.nextSpeed = int(ahead_speed)
 
-    reading = worker.lanes.find_ahead(matcher, raw_current_section, lat, lon, bearing)
+    reading = worker.lanes.find_ahead(matcher, raw_current_section, lat, lon, bearing) if lane_gps_ok else None
     if reading is not None:
       distance, collected, lanes = reading
       tdx.laneDistanceM = distance
