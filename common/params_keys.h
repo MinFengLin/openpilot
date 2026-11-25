@@ -180,6 +180,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"dp_lane_centering_e2e_authority", {PERSISTENT, INT, "85"}},
     {"dp_lane_centering_pause_on_signal", {PERSISTENT, BOOL, "0"}},
     {"dp_toyota_auto_brake_hold", {PERSISTENT, INT, "0"}},
+    {"dp_tdx_credentials", {PERSISTENT | DONT_LOG, JSON}},
     {"dp_mapd_country", {PERSISTENT, STRING, "TW"}},
     {"dp_mapd_state", {PERSISTENT, STRING}},
     {"dp_mapd_status", {PERSISTENT, STRING, "尚未下載圖資"}},

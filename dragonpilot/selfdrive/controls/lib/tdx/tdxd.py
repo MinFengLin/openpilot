@@ -10,7 +10,7 @@ dp - TDX 高公局路況預警 daemon (tdxd)
   - 下載結果寫入 CACHE_SHAPES_PATH（/data 下），先驗證內容再以 tmp + os.replace 原子替換
   - 快取未滿 SHAPES_MAX_AGE_S 不重新下載
 
-TLS：既有來源維持原本的 verify=False；VD 來源使用預設憑證驗證。
+TLS：高公局既有事件與路段車流來源維持原本的 verify=False；VD 和 TDX 使用預設憑證驗證。
 """
 import json
 import math
@@ -26,7 +26,8 @@ import urllib3
 
 import cereal.messaging as messaging
 from cereal import custom
-from dragonpilot.selfdrive.controls.lib.tdx import freeway_lanes
+from dragonpilot.selfdrive.controls.lib.tdx import freeway_lanes, tdx_auth
+from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
@@ -126,11 +127,16 @@ def _atomic_write_json(path, data):
     raise
 
 
-def download_shapes():
+def download_shapes(credentials=None):
   """下載線形圖資，驗證通過才原子寫入快取。回傳 SectionShapes list 或 None。"""
   try:
-    response = _http_get(SHAPES_URL, SHAPES_HEADERS, SHAPES_TIMEOUT_S)
-    response.raise_for_status()
+    headers = SHAPES_HEADERS.copy()
+    if credentials is not None:
+      token = tdx_auth.access_token(*credentials, timeout=LIVE_TIMEOUT_S)
+      headers['Authorization'] = f"Bearer {token}"
+    response = requests.get(SHAPES_URL, headers=headers, timeout=SHAPES_TIMEOUT_S, allow_redirects=False)
+    if response.status_code != 200:
+      raise ValueError(f"TDX 路段圖資 HTTP {response.status_code}")
     shapes = _validate_shapes(response.json())
     if shapes is None:
       cloudlog.warning("tdxd: 下載的圖資內容不符預期，保留原有圖資")
@@ -139,7 +145,7 @@ def download_shapes():
     cloudlog.info(f"tdxd: 圖資下載成功，共 {len(shapes)} 筆路段 -> {CACHE_SHAPES_PATH}")
     return shapes
   except Exception as e:
-    cloudlog.warning(f"tdxd: 圖資下載失敗: {e}")
+    cloudlog.warning(f"tdxd: 圖資下載失敗（{type(e).__name__}）")
     return None
 
 
@@ -531,6 +537,7 @@ class NetworkWorker:
     self.matcher = matcher  # 主執行緒讀取；更新圖資時整個物件替換
     self.client = FreewayDataClient()
     self.lanes = FreewayLaneClient()
+    self._params = Params()
     self._shapes_attempts = 0
     self._next_shapes_attempt = 0.0
     self._last_live_update = -float('inf')
@@ -543,7 +550,7 @@ class NetworkWorker:
     if self._shapes_attempts >= SHAPES_MAX_ATTEMPTS or now < self._next_shapes_attempt or _cache_is_fresh():
       return
     self._shapes_attempts += 1
-    shapes = download_shapes()
+    shapes = download_shapes(tdx_auth.read_credentials(self._params))
     if shapes is None:
       self._next_shapes_attempt = now + SHAPES_RETRY_INTERVAL_S
       return
