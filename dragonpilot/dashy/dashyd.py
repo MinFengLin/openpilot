@@ -414,6 +414,15 @@ def extract_tdx(sm, started_frame=0):
         'congestion': str(tdx.congestion),
         'displayNextSpeed': format_speed(next_speed / Conversions.MS_TO_KPH) if speed_available else None,
         'speedUnit': get_speed_unit(),
+        'laneDistanceM': int(getattr(tdx, 'laneDistanceM', 0)),
+        'laneCollectedAt': int(getattr(tdx, 'laneCollectedAt', 0)),
+        'laneSpeeds': [
+            {
+                'laneId': int(lane.laneId),
+                'speed': format_speed(lane.speed / Conversions.MS_TO_KPH) if 0 <= lane.speed <= 150 else None,
+            }
+            for lane in getattr(tdx, 'laneSpeeds', ())
+        ],
         'events': [
             {
                 'eventType': int(event.eventType),

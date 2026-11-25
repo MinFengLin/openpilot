@@ -3,14 +3,14 @@
 dp - TDX 高公局路況預警 daemon (tdxd)
 
 主執行緒：讀 GPS -> 路段匹配 -> 1Hz 發布 tdx。
-背景執行緒：所有網路存取（線形圖資每日更新、LiveEvents / LiveTraffic 每 60 秒更新），不阻塞主迴圈。
+背景執行緒：所有網路存取（線形圖資每日更新、LiveEvents / LiveTraffic / VD 每 60 秒更新），不阻塞主迴圈。
 
 線形圖資：
   - repo 內 freeway_shapes.json 為唯讀備援，執行時不再覆寫
   - 下載結果寫入 CACHE_SHAPES_PATH（/data 下），先驗證內容再以 tmp + os.replace 原子替換
   - 快取未滿 SHAPES_MAX_AGE_S 不重新下載
 
-TLS：維持原本 verify=False（實車測試：啟用憑證驗證 / 等待系統時間有效時抓不到資料）。
+TLS：既有來源維持原本的 verify=False；VD 來源使用預設憑證驗證。
 """
 import json
 import math
@@ -26,6 +26,7 @@ import urllib3
 
 import cereal.messaging as messaging
 from cereal import custom
+from dragonpilot.selfdrive.controls.lib.tdx import freeway_lanes
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
@@ -54,6 +55,10 @@ MIN_VALID_SECTIONS = 300         # 現行圖資 465 筆；低於此數視為異�
 
 LIVE_UPDATE_INTERVAL_S = 60
 LIVE_TIMEOUT_S = 5
+FREEWAY_DATA_URL = "https://tisvcloud.freeway.gov.tw/history/motc20"
+VD_METADATA_INTERVAL_S = 86400
+VD_METADATA_RETRY_S = 600
+VD_MATCH_DISTANCE_M = 35
 
 TOPOLOGY_MAX_GAP_M = 100.0       # 前一段終點與下一段起點的最大距離（原 50m，大量相鄰路段接不上）
 TOPOLOGY_MAX_ANGLE_DEG = 45.0    # 方位差上限，排除對向車道
@@ -458,6 +463,60 @@ class FreewayDataClient:
       cloudlog.warning(f"tdxd: LiveEvents/LiveTraffic 更新失敗: {e}")
 
 
+class FreewayLaneClient:
+  def __init__(self):
+    self.snapshot = ({}, {}, {})
+    self._metadata = None
+    self._next_metadata_update = 0.0
+
+  @staticmethod
+  def _download(name, tag):
+    response = requests.get(f"{FREEWAY_DATA_URL}/{name}.xml", headers=LIVE_HEADERS, timeout=LIVE_TIMEOUT_S)
+    response.raise_for_status()
+    return freeway_lanes.read_xml(response.content, tag)
+
+  def update(self, monotonic_now):
+    try:
+      if monotonic_now >= self._next_metadata_update:
+        self._next_metadata_update = monotonic_now + VD_METADATA_RETRY_S
+        sections = self._download('Section', 'SectionList')
+        stations = self._download('VD', 'VDList')
+        version = sections.findtext('LinkVersion')
+        section_map = freeway_lanes.parse_sections(sections)
+        station_map = freeway_lanes.parse_stations(stations)
+        if not version or version != stations.findtext('LinkVersion') or not section_map or not station_map:
+          raise ValueError('Invalid VD metadata or inconsistent link versions')
+        self._metadata = (version, section_map, station_map)
+        self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
+
+      if self._metadata is None:
+        return
+
+      version, sections, stations = self._metadata
+      live = self._download('VDLive', 'VDLiveList')
+      if live.findtext('LinkVersion') != version:
+        self.snapshot = ({}, {}, {})
+        self._next_metadata_update = min(self._next_metadata_update, monotonic_now + VD_METADATA_RETRY_S)
+        return
+      now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+      self.snapshot = (sections, stations, freeway_lanes.parse_live(live, now))
+    except (requests.RequestException, ET.ParseError, ValueError) as e:
+      cloudlog.warning(f"tdxd: 高公局逐車道資料更新失敗: {e}")
+
+  def find_ahead(self, matcher, section_id, lat, lon, bearing):
+    sections, stations, readings = self.snapshot
+    if not readings or section_id not in sections:
+      return None
+    if matcher.find_current_section(lat, lon, threshold_meters=VD_MATCH_DISTANCE_M, bearing_deg=bearing) != section_id:
+      return None
+    length = matcher.sections[section_id]['total_length']
+    if length <= 0:
+      return None
+    fraction = 1 - matcher.distance_to_section_end(section_id, lat, lon) / length
+    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+    return freeway_lanes.select_ahead(sections, stations, readings, section_id, fraction, now)
+
+
 # ==========================================
 # 3. 背景網路執行緒
 # ==========================================
@@ -465,6 +524,7 @@ class NetworkWorker:
   def __init__(self, matcher):
     self.matcher = matcher  # 主執行緒讀取；更新圖資時整個物件替換
     self.client = FreewayDataClient()
+    self.lanes = FreewayLaneClient()
     self._shapes_attempts = 0
     self._next_shapes_attempt = 0.0
     self._last_live_update = -float('inf')
@@ -492,6 +552,7 @@ class NetworkWorker:
         if now - self._last_live_update >= LIVE_UPDATE_INTERVAL_S:
           self._last_live_update = now
           self.client.update_data(self.matcher)
+          self.lanes.update(now)
 
         self._maybe_update_shapes(time.monotonic())
       except Exception:
@@ -595,6 +656,16 @@ def main():
     tdx.speed = int(curr_speed)
     tdx.nextSectionId = str(stable_ahead_section) if stable_ahead_section else ""
     tdx.nextSpeed = int(ahead_speed)
+
+    reading = worker.lanes.find_ahead(matcher, raw_current_section, lat, lon, bearing)
+    if reading is not None:
+      distance, collected, lanes = reading
+      tdx.laneDistanceM = distance
+      tdx.laneCollectedAt = collected
+      lane_speeds = tdx.init('laneSpeeds', len(lanes))
+      for lane, (lane_id, speed) in zip(lane_speeds, lanes, strict=True):
+        lane.laneId = lane_id
+        lane.speed = speed
 
     if ahead_speed <= 0:
       tdx.congestion = Congestion.unknown

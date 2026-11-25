@@ -1,24 +1,23 @@
 #traffic-hud {
   position: absolute;
-  top: 30%;
-  left: 50%;
-  transform: translateX(-50%);
+  top: max(clamp(64px, 16%, 96px), calc(env(safe-area-inset-top) + 12px), var(--traffic-hud-top, 0px));
+  left: max(12px, env(safe-area-inset-left));
   width: max-content;
-  max-width: min(76%, 760px);
+  max-width: min(360px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   box-sizing: border-box;
   padding: clamp(6px, 1vh, 12px) clamp(10px, 1.5vw, 24px);
   border-radius: 12px;
   background: rgb(0 0 0 / 72%);
   color: #fff;
   font-family: "Geist Mono", sans-serif;
-  font-size: clamp(14px, 2.2vw, 34px);
+  font-size: clamp(14px, 1.6vw, 22px);
   line-height: 1.45;
-  text-align: center;
+  text-align: left;
   pointer-events: none;
   z-index: 11;
 }
 #traffic-hud[hidden], #traffic-hud [hidden] { display: none; }
-.traffic-hud-speed { font-weight: 700; white-space: nowrap; }
+.traffic-hud-speed { font-weight: 700; }
 #traffic-hud[data-congestion="smooth"] .traffic-hud-speed { color: #86efac; }
 #traffic-hud[data-congestion="slow"] .traffic-hud-speed { color: #fde047; }
 #traffic-hud[data-congestion="congested"] .traffic-hud-speed { color: #fca5a5; }
@@ -29,9 +28,37 @@
   from { transform: translateX(0); }
   to { transform: translateX(var(--traffic-scroll)); }
 }
-@media (max-width: 480px) {
-  #traffic-hud { max-width: 92%; font-size: 14px; }
+.traffic-hud-lanes {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid rgb(255 255 255 / 25%);
 }
+.traffic-hud-lane-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 10px;
+  font-size: 0.8em;
+}
+.traffic-hud-lane-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.traffic-hud-lane-list li {
+  flex: 1 0 3em;
+  display: grid;
+  justify-items: center;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 14%);
+  line-height: 1.25;
+}
+.traffic-hud-lane-list span { font-size: 0.8em; }
+.traffic-hud-lane-list strong { font-variant-numeric: tabular-nums; }
 @media (max-height: 360px) {
   #traffic-hud { padding: 3px 8px; font-size: 13px; }
 }

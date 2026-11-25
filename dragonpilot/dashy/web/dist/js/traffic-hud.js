@@ -21,10 +21,17 @@
       const text = `${event.isCurrentSection ? '目前路段' : '前方'}：${description}`;
       descriptions.push(text);
     }
-    if (!speed && !descriptions.length) return null;
+    const lanes = Array.isArray(traffic.laneSpeeds) ? traffic.laneSpeeds : [];
+    const hasLanes = Number.isFinite(traffic.laneDistanceM) && traffic.laneDistanceM >= 0
+      && traffic.laneCollectedAt > 0 && lanes.some(lane => lane.speed != null);
+    if (!speed && !descriptions.length && !hasLanes) return null;
     return {
       speed: [speed, congestion].filter(Boolean).join(' · '),
       event: descriptions.join(' ／ '),
+      lanes: hasLanes ? lanes : [],
+      laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
+      distance: hasLanes ? (traffic.laneDistanceM < 1000
+        ? `前方 ${traffic.laneDistanceM} m` : `前方 ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
       congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',
     };
   }
@@ -49,7 +56,17 @@
   eventLine.className = 'traffic-hud-event';
   const eventText = document.createElement('span');
   eventLine.appendChild(eventText);
-  panel.append(speedLine, eventLine);
+  const lanePanel = document.createElement('div');
+  lanePanel.className = 'traffic-hud-lanes';
+  const laneHeader = document.createElement('div');
+  laneHeader.className = 'traffic-hud-lane-header';
+  const laneTitle = document.createElement('span');
+  const laneDistance = document.createElement('span');
+  laneHeader.append(laneTitle, laneDistance);
+  const laneList = document.createElement('ol');
+  laneList.className = 'traffic-hud-lane-list';
+  lanePanel.append(laneHeader, laneList);
+  panel.append(speedLine, eventLine, lanePanel);
   host.appendChild(panel);
 
   function clearEvent() {
@@ -71,15 +88,48 @@
     eventText.classList.toggle('traffic-hud-scroll', overflow > 1);
   }
 
+  let renderedLanes = '';
+  function updateLanes(display) {
+    lanePanel.hidden = !display?.lanes.length;
+    if (lanePanel.hidden) return;
+    laneTitle.textContent = display.laneCaption;
+    laneDistance.textContent = display.distance;
+    const key = JSON.stringify(display.lanes);
+    if (key === renderedLanes) return;
+    renderedLanes = key;
+    laneList.textContent = '';
+    for (const lane of display.lanes) {
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = `第 ${lane.laneId + 1} 道`;
+      const speed = document.createElement('strong');
+      speed.textContent = lane.speed ?? '—';
+      item.append(label, speed);
+      laneList.appendChild(item);
+    }
+  }
+
   function update() {
     const page = document.getElementById('hud-page');
-    const display = !document.hidden && page && page.getClientRects().length
+    const alertSize = window.sm?.selfdriveState?.alertSize;
+    const alertVisible = Boolean(alertSize && alertSize !== 'none');
+    const display = !alertVisible && !document.hidden && page && page.getClientRects().length
       && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
     panel.hidden = !display;
+    updateLanes(display);
     if (!display) {
       speedLine.textContent = '';
       clearEvent();
       return;
+    }
+    const driveStatus = document.getElementById('drive-status');
+    if (driveStatus && !driveStatus.hidden && driveStatus.getClientRects().length) {
+      const statusBottom = Math.max(driveStatus.getBoundingClientRect().bottom,
+        ...Array.from(driveStatus.querySelectorAll('.drive-status-detail:not([hidden])'),
+          detail => detail.getBoundingClientRect().bottom));
+      panel.style.setProperty('--traffic-hud-top', `${statusBottom - host.getBoundingClientRect().top + 16}px`);
+    } else {
+      panel.style.removeProperty('--traffic-hud-top');
     }
     panel.dataset.congestion = display.congestion;
     speedLine.textContent = display.speed;

@@ -44,6 +44,19 @@ test('preserves event order and duplicates from tdxd', () => {
   ];
   assert.equal(getDisplay(sm, now).event, '目前路段：<img onerror=alert(1)> ／ 目前路段：<img onerror=alert(1)>');
 });
+test('lane-only data shows distance and retains missing lanes', () => {
+  const sm = state();
+  Object.assign(sm.tdx, { nextSpeed: -1, events: [], laneDistanceM: 1800, laneCollectedAt: 1,
+    laneSpeeds: [{ laneId: 0, speed: '92' }, { laneId: 1, speed: null }] });
+  const display = getDisplay(sm, now);
+  assert.equal(display.laneCaption, '車道（左 → 右） · km/h');
+  assert.equal(display.distance, '前方 1.8 km');
+  assert.equal(display.lanes[1].speed, null);
+  assert.equal(getDisplay(sm, now + 4001), null);
+  sm.tdx.laneSpeeds[0].speed = null;
+  assert.equal(getDisplay(sm, now), null);
+});
+
 test('overflow scrolls the full hidden width at a fixed speed', () => {
   const metrics = getScrollMetrics(1000, 300);
   assert.equal(metrics.overflow, 700);
@@ -75,17 +88,29 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
     get offsetWidth() { this.reflows++; return this.scrollWidth; }
   }
   const host = new Element(); const page = new Element();
+  const driveStatus = new Element();
+  driveStatus.getBoundingClientRect = () => ({ bottom: 80 });
+  driveStatus.querySelectorAll = () => [{ getBoundingClientRect: () => ({ bottom: 120 }) }];
+  host.getBoundingClientRect = () => ({ top: 10 });
   const sm = state(); sm.recv_time.tdx = Date.now() / 1000;
   let tick;
   const context = {
     window: { sm, setInterval: callback => { tick = callback; }, addEventListener() {} },
-    document: { hidden: false, getElementById: id => id === 'hud-page' ? page : host,
+    document: { hidden: false, getElementById: id => ({ 'hud-page': page, 'hud-page-content': host, 'drive-status': driveStatus })[id],
       createElement: () => new Element(), addEventListener() {} },
     getComputedStyle: () => ({ visibility: 'visible' }),
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'web/dist/js/traffic-hud.js'), 'utf8'), context);
   const panel = host.children[0]; const eventLine = panel.children[1]; const text = eventLine.children[0];
   assert.equal(text.classList.contains('traffic-hud-scroll'), true);
+  let offset;
+  panel.style.setProperty = (key, value) => { if (key === '--traffic-hud-top') offset = value; };
+  panel.style.removeProperty = key => { if (key === '--traffic-hud-top') offset = undefined; };
+  tick();
+  assert.equal(offset, '126px');
+  driveStatus.hidden = true;
+  tick();
+  assert.equal(offset, undefined);
   const initialReflows = text.reflows;
   tick(); assert.equal(text.reflows, initialReflows);
   sm.tdx.events = [{ description: '施工，請注意', isCurrentSection: true }];
