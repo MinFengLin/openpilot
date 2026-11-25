@@ -44,16 +44,17 @@ test('preserves event order and duplicates from tdxd', () => {
   ];
   assert.equal(getDisplay(sm, now).event, '目前路段：<img onerror=alert(1)> ／ 目前路段：<img onerror=alert(1)>');
 });
-test('lane-only data shows distance and retains missing lanes', () => {
+test('lane-only data shows distance and omits missing lanes', () => {
   const sm = state();
   Object.assign(sm.tdx, { nextSpeed: -1, events: [], laneDistanceM: 1800, laneCollectedAt: 1,
-    laneSpeeds: [{ laneId: 0, speed: '92' }, { laneId: 1, speed: null }] });
+    laneSpeeds: [{ laneId: 0, speed: '92' }, { laneId: 1, speed: null }, { laneId: 2, speed: '0' }] });
   const display = getDisplay(sm, now);
   assert.equal(display.laneCaption, '車道（左 → 右） · km/h');
   assert.equal(display.distance, '前方 1.8 km');
-  assert.equal(display.lanes[1].speed, null);
+  assert.deepEqual(display.lanes.map(lane => [lane.laneId, lane.speed]), [[0, '92'], [2, '0']]);
   assert.equal(getDisplay(sm, now + 4001), null);
   sm.tdx.laneSpeeds[0].speed = null;
+  sm.tdx.laneSpeeds[2].speed = null;
   assert.equal(getDisplay(sm, now), null);
 });
 

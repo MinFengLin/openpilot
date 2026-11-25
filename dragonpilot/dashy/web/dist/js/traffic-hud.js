@@ -21,12 +21,16 @@
       const text = `${event.isCurrentSection ? '目前路段' : '前方'}：${description}`;
       descriptions.push(text);
     }
-    const lanes = Array.isArray(traffic.laneSpeeds) ? traffic.laneSpeeds : [];
+    const lanes = Array.isArray(traffic.laneSpeeds)
+      ? traffic.laneSpeeds.filter(lane => lane.speed != null) : [];
     const hasLanes = Number.isFinite(traffic.laneDistanceM) && traffic.laneDistanceM >= 0
-      && traffic.laneCollectedAt > 0 && lanes.some(lane => lane.speed != null);
+      && traffic.laneCollectedAt > 0 && lanes.length > 0;
     if (!speed && !descriptions.length && !hasLanes) return null;
     return {
       speed: [speed, congestion].filter(Boolean).join(' · '),
+      speedValue: hasSpeed ? traffic.displayNextSpeed : '',
+      speedUnit: traffic.speedUnit,
+      speedStatus: congestion,
       event: descriptions.join(' ／ '),
       lanes: hasLanes ? lanes : [],
       laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
@@ -52,6 +56,13 @@
   panel.hidden = true;
   const speedLine = document.createElement('div');
   speedLine.className = 'traffic-hud-speed';
+  const speedLabel = document.createElement('span');
+  speedLabel.textContent = '前方車流';
+  const speedValue = document.createElement('strong');
+  const speedUnit = document.createElement('span');
+  const speedStatus = document.createElement('span');
+  speedStatus.className = 'traffic-hud-status';
+  speedLine.append(speedLabel, speedValue, speedUnit, speedStatus);
   const eventLine = document.createElement('div');
   eventLine.className = 'traffic-hud-event';
   const eventText = document.createElement('span');
@@ -103,7 +114,7 @@
       const label = document.createElement('span');
       label.textContent = `第 ${lane.laneId + 1} 道`;
       const speed = document.createElement('strong');
-      speed.textContent = lane.speed ?? '—';
+      speed.textContent = lane.speed;
       item.append(label, speed);
       laneList.appendChild(item);
     }
@@ -118,7 +129,6 @@
     panel.hidden = !display;
     updateLanes(display);
     if (!display) {
-      speedLine.textContent = '';
       clearEvent();
       return;
     }
@@ -132,7 +142,10 @@
       panel.style.removeProperty('--traffic-hud-top');
     }
     panel.dataset.congestion = display.congestion;
-    speedLine.textContent = display.speed;
+    speedValue.textContent = display.speedValue;
+    speedUnit.textContent = display.speedUnit;
+    speedStatus.textContent = display.speedStatus;
+    speedStatus.hidden = !display.speedStatus;
     speedLine.hidden = !display.speed;
     if (!display.event) {
       clearEvent();
