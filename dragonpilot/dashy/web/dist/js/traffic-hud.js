@@ -111,11 +111,9 @@
     laneList.textContent = '';
     for (const lane of display.lanes) {
       const item = document.createElement('li');
-      const label = document.createElement('span');
-      label.textContent = `第 ${lane.laneId + 1} 道`;
       const speed = document.createElement('strong');
       speed.textContent = lane.speed;
-      item.append(label, speed);
+      item.appendChild(speed);
       laneList.appendChild(item);
     }
   }
