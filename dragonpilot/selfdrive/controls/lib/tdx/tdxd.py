@@ -26,7 +26,7 @@ import urllib3
 
 import cereal.messaging as messaging
 from cereal import custom
-from dragonpilot.selfdrive.controls.lib.tdx import freeway_lanes, tdx_auth
+from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes, tdx_auth, tdx_live
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware import PC
@@ -135,6 +135,7 @@ def download_shapes(credentials=None):
       token = tdx_auth.access_token(*credentials, timeout=LIVE_TIMEOUT_S)
       headers['Authorization'] = f"Bearer {token}"
     response = requests.get(SHAPES_URL, headers=headers, timeout=SHAPES_TIMEOUT_S, allow_redirects=False)
+    tdx_auth.check_rate_limit(response)
     if response.status_code != 200:
       raise ValueError(f"TDX 路段圖資 HTTP {response.status_code}")
     shapes = _validate_shapes(response.json())
@@ -144,6 +145,8 @@ def download_shapes(credentials=None):
     _atomic_write_json(CACHE_SHAPES_PATH, {"SectionShapes": shapes})
     cloudlog.info(f"tdxd: 圖資下載成功，共 {len(shapes)} 筆路段 -> {CACHE_SHAPES_PATH}")
     return shapes
+  except tdx_auth.TdxRateLimited:
+    raise
   except Exception as e:
     cloudlog.warning(f"tdxd: 圖資下載失敗（{type(e).__name__}）")
     return None
@@ -261,6 +264,8 @@ class LocalMapMatcher:
           'coords': coords,
           'segments': segments,
           'total_length': total_length,
+          'route': item.get('route'),
+          'road_name': item.get('road_name', ''),
           'start_pt': coords[0],
           'end_pt': coords[-1],
         }
@@ -285,8 +290,9 @@ class LocalMapMatcher:
         best_next = None
         min_gap = float('inf')
 
-        for sec_b, data_b in self.sections.items():
-          if sec_a == sec_b:
+        for sec_b in sorted(self._get_candidates_from_grid(end_pt[1], end_pt[0], radius_km=0.2)):
+          data_b = self.sections[sec_b]
+          if sec_a == sec_b or data_a['route'] != data_b['route']:
             continue
           start_pt = data_b['start_pt']
           gap = _get_distance_meters(end_pt[0], end_pt[1], start_pt[0], start_pt[1])
@@ -316,9 +322,12 @@ class LocalMapMatcher:
     return candidates
 
   def find_current_section(self, lat, lon, threshold_meters=300, bearing_deg=None, direction_text=None):
+    return self.match_current_section(lat, lon, threshold_meters, bearing_deg, direction_text)[0]
+
+  def match_current_section(self, lat, lon, threshold_meters, bearing_deg=None, direction_text=None):
     candidates = self._get_candidates_from_grid(lat, lon, radius_km=2)
     if not candidates:
-      return None
+      return None, math.inf
 
     best_match = None
     min_dist = float('inf')
@@ -363,8 +372,8 @@ class LocalMapMatcher:
           best_match = sec_id
 
     if best_match and min_dist < threshold_meters:
-      return best_match
-    return None
+      return best_match, min_dist
+    return None, math.inf
 
   def distance_to_section_end(self, sec_id, lat, lon):
     """車輛投影到路段上的位置，到該路段終點的剩餘距離 (m)。"""
@@ -409,67 +418,130 @@ class LocalMapMatcher:
 # 2. 高公局 XML 雙核心抓取器
 # ==========================================
 class FreewayDataClient:
-  def __init__(self):
+  def __init__(self, provincial=False):
+    self.provincial = provincial
     self.events_url = "https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml"
     self.traffic_url = "https://tisvcloud.freeway.gov.tw/history/motc20/LiveTraffic.xml"
     # 由背景執行緒整批替換（不就地修改），主執行緒讀取時不需加鎖
     self.cached_events = []
     self.cached_speeds = {}
 
-  def update_data(self, matcher):
+  @staticmethod
+  def _event(matcher, event_type, description, positions, direction):
+    point = re.fullmatch(r'POINT\s*\(([^)]+)\)', positions.strip()) if isinstance(positions, str) else None
+    if point is None:
+      return None
     try:
-      res_evt = _http_get(self.events_url, LIVE_HEADERS, LIVE_TIMEOUT_S)
-      res_evt.encoding = 'utf-8'
-      xml_evt = re.sub(r'\sxmlns="[^"]+"', '', res_evt.text, count=1)
-      root_evt = ET.fromstring(xml_evt)
+      lon, lat = map(float, point[1].split())
+    except ValueError:
+      return None
+    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+      return None
+    direction = direction if isinstance(direction, str) else ''
+    section = matcher.find_current_section(lat, lon, threshold_meters=1000, direction_text=direction)
+    description = description if isinstance(description, str) and description else '未知事件'
+    return {'EventType': str(event_type or '0'), 'Description': description,
+            'SectionID': str(section) if section else '', 'lat': lat, 'lon': lon, 'direction': direction}
 
-      new_events = []
-      for event in root_evt.findall('.//LiveEvent'):
-        event_type = (event.findtext('EventType') or '0').strip()
-        desc = event.findtext('Description', '未知事件')
-        positions = event.findtext('Positions')
-        direction = (event.findtext('.//Direction') or '').strip()
+  def _freeway_events(self, matcher):
+    if self.provincial:
+      return []
+    response = _http_get(self.events_url, LIVE_HEADERS, LIVE_TIMEOUT_S)
+    response.raise_for_status()
+    root = freeway_lanes.read_xml(response.content, 'LiveEventList')
+    return [parsed for event in root.findall('.//LiveEvent') if (parsed := self._event(
+      matcher, event.findtext('EventType'), event.findtext('Description'), event.findtext('Positions'),
+      event.findtext('.//Direction'))) is not None]
 
-        if positions and positions.startswith('POINT('):
-          coords_str = positions.replace('POINT(', '').replace(')', '').strip().split()
-          if len(coords_str) == 2:
-            evt_lon, evt_lat = float(coords_str[0]), float(coords_str[1])
-            # 帶入 direction_text，讓內積演算法判斷對錯車道
-            sec_id = matcher.find_current_section(evt_lat, evt_lon, threshold_meters=1000, direction_text=direction)
+  def _freeway_speeds(self):
+    if self.provincial:
+      response = requests.get(f"{expressway.BASE_URL}/{expressway.ENDPOINTS['LiveTraffic']}.xml", timeout=LIVE_TIMEOUT_S)
+    else:
+      response = _http_get(self.traffic_url, LIVE_HEADERS, LIVE_TIMEOUT_S)
+    response.raise_for_status()
+    root = freeway_lanes.read_xml(response.content, 'LiveTrafficList')
+    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+    return self._speeds((traffic.findtext('SectionID'), traffic.findtext('TravelSpeed'))
+                        for traffic in root.findall('.//LiveTraffic') if not self.provincial
+                        or freeway_lanes.is_fresh_timestamp(traffic.findtext('DataCollectTime'), now, expressway.TRAFFIC_MAX_AGE_S))
 
-            # 就算找不到 SectionID 也存起來供空間雷達掃描用
-            new_events.append({
-              'EventType': event_type,
-              'Description': desc,
-              'SectionID': str(sec_id).strip() if sec_id else "",
-              'lat': evt_lat,
-              'lon': evt_lon,
-              'direction': direction,
-            })
-      self.cached_events = new_events
+  @staticmethod
+  def _speeds(records):
+    speeds = {}
+    for section, value in records:
+      try:
+        speed = float(value)
+      except (TypeError, ValueError, OverflowError):
+        continue
+      if section and 1 <= speed <= 150:
+        speeds[str(section).strip()] = round(speed)
+    return speeds
 
-      res_spd = _http_get(self.traffic_url, LIVE_HEADERS, LIVE_TIMEOUT_S)
-      res_spd.encoding = 'utf-8'
-      xml_spd = re.sub(r' xmlns="[^"]+"', '', res_spd.text, count=1)
-      xml_spd = re.sub(r' xmlns:xsi="[^"]+"', '', xml_spd, count=1)
-      xml_spd = re.sub(r' xsi:[^=]+="[^"]+"', '', xml_spd)
-      root_spd = ET.fromstring(xml_spd)
+  def _tdx_events(self, matcher, source, now):
+    path = tdx_live.HIGHWAY_EVENTS if self.provincial else tdx_live.EVENTS
+    data = source.fetch(path, 'LiveEvents', now)
+    events = []
+    for event in data['LiveEvents']:
+      if not isinstance(event, dict):
+        continue
+      location = event.get('Location')
+      highway = location.get('FreeExpressHighway') if isinstance(location, dict) else None
+      direction = highway.get('Direction') if isinstance(highway, dict) else ''
+      item = self._event(matcher, event.get('EventType'), event.get('Description'), event.get('Positions'), direction)
+      if item is not None:
+        if self.provincial:
+          matched_road = matcher.sections.get(item['SectionID'], {}).get('road_name')
+          reported_road = highway.get('Road') if isinstance(highway, dict) else None
+          if not isinstance(reported_road, str) or not expressway.same_road(matched_road, reported_road):
+            continue
+        events.append(item)
+    if not self.provincial and data['LiveEvents'] and not events:
+      raise ValueError('no usable road events')
+    return events
 
-      new_speeds = {}
-      for traffic in root_spd.findall('.//LiveTraffic'):
-        link_id = (traffic.findtext('SectionID') or '').strip()
-        speed_str = (traffic.findtext('TravelSpeed') or '').strip()
-        if link_id and speed_str:
-          spd = int(speed_str)
-          if spd > 0:
-            new_speeds[link_id] = spd
-      self.cached_speeds = new_speeds
-      cloudlog.debug(f"tdxd: 快取 {len(self.cached_events)} 筆事件, {len(self.cached_speeds)} 筆有效車速")
-    except Exception as e:
-      cloudlog.warning(f"tdxd: LiveEvents/LiveTraffic 更新失敗: {e}")
+  def _tdx_speeds(self, source, now):
+    path, max_age = ((tdx_live.HIGHWAY_TRAFFIC, expressway.TRAFFIC_MAX_AGE_S) if self.provincial else
+                     (tdx_live.TRAFFIC, freeway_lanes.MAX_AGE_S))
+    data = source.fetch(path, 'LiveTraffics', now, max_age=max_age)
+    speeds = self._speeds((traffic.get('SectionID'), traffic.get('TravelSpeed'))
+                          for traffic in data['LiveTraffics'] if isinstance(traffic, dict)
+                          and freeway_lanes.is_fresh_timestamp(traffic.get('DataCollectTime'), now, max_age))
+    if not speeds:
+      raise ValueError('no fresh section speeds')
+    return speeds
+
+  def update_data(self, matcher, source=None):
+    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+    bureau = 'Highway Bureau' if self.provincial else 'Freeway Bureau'
+    for name, primary, fallback in (
+      ('cached_events', lambda: self._tdx_events(matcher, source, now), lambda: self._freeway_events(matcher)),
+      ('cached_speeds', lambda: self._tdx_speeds(source, now), self._freeway_speeds),
+    ):
+      if source is not None and not source.cooling_down():
+        try:
+          setattr(self, name, primary())
+          continue
+        except (requests.RequestException, ValueError) as e:
+          cloudlog.warning(f"tdxd: TDX {name} failed ({type(e).__name__}); using {bureau}")
+      try:
+        setattr(self, name, fallback())
+      except (requests.RequestException, ET.ParseError, ValueError) as e:
+        cloudlog.warning(f"tdxd: {bureau} {name} failed ({type(e).__name__})")
 
 
 class FreewayLaneClient:
+  tdx_vd_path = tdx_live.VD
+  require_link_version = True
+  bureau = "Freeway Bureau"
+
+  def _read_live(self, data, version, now, expected_version):
+    if version != expected_version:
+      return {}
+    return freeway_lanes.parse_live(data, now)
+
+  def _road_label(self, road_id):
+    return freeway_lanes.route_label(road_id)
+
   def __init__(self):
     self.snapshot = ({}, {}, {})
     self._metadata = None
@@ -493,27 +565,38 @@ class FreewayLaneClient:
     self._metadata = (version, section_map, station_map)
     self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
 
-  def update(self, monotonic_now):
+  def update(self, monotonic_now, source=None):
     if monotonic_now >= self._next_metadata_update:
       try:
         self._update_metadata(monotonic_now)
       except (requests.RequestException, ET.ParseError, ValueError) as e:
         cloudlog.warning(f"tdxd: 高公局偵測器清單更新失敗: {e}")
 
-    try:
-      if self._metadata is None:
-        return
+    if self._metadata is None:
+      return
 
-      version, sections, stations = self._metadata
-      live = self._download('VDLive', 'VDLiveList')
-      if live.findtext('LinkVersion') != version:
-        self.snapshot = ({}, {}, {})
-        self._next_metadata_update = min(self._next_metadata_update, monotonic_now + VD_METADATA_RETRY_S)
+    version, sections, stations = self._metadata
+    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+    if source is not None and not source.cooling_down():
+      try:
+        data = source.fetch(self.tdx_vd_path, 'VDLives', now)
+        readings = self._read_live(data, data.get('LinkVersion'), now, version)
+        if not readings:
+          raise ValueError('no fresh lane speeds')
+        self.snapshot = (sections, stations, readings)
         return
-      now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-      self.snapshot = (sections, stations, freeway_lanes.parse_live(live, now))
+      except (requests.RequestException, ValueError) as e:
+        cloudlog.warning(f"tdxd: TDX lane speeds failed ({type(e).__name__}); using {self.bureau}")
+
+    try:
+      live = self._download('VDLive', 'VDLiveList')
+      live_version = live.findtext('LinkVersion')
+      if self.require_link_version and live_version != version:
+        self._next_metadata_update = min(self._next_metadata_update, monotonic_now + VD_METADATA_RETRY_S)
+      readings = self._read_live(live, live_version, now, version)
+      self.snapshot = (sections, stations, readings)
     except (requests.RequestException, ET.ParseError, ValueError) as e:
-      cloudlog.warning(f"tdxd: 高公局逐車道資料更新失敗: {e}")
+      cloudlog.warning(f"tdxd: {self.bureau} lane speeds failed ({type(e).__name__})")
 
   def find_ahead(self, matcher, section_id, lat, lon, bearing):
     sections, stations, readings = self.snapshot
@@ -526,7 +609,73 @@ class FreewayLaneClient:
       return None
     fraction = 1 - matcher.distance_to_section_end(section_id, lat, lon) / length
     now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-    return freeway_lanes.select_ahead(sections, stations, readings, section_id, fraction, now)
+    reading = freeway_lanes.select_ahead(sections, stations, readings, section_id, fraction, now)
+    if reading is None:
+      return None
+    route, _, _ = sections[section_id]
+    return (*reading, self._road_label(route[0]))
+
+
+class ExpresswayLaneClient(FreewayLaneClient):
+  tdx_vd_path = tdx_live.HIGHWAY_VD
+  require_link_version = False
+  bureau = "Highway Bureau"
+
+  def __init__(self):
+    super().__init__()
+    self.map_data = (LocalMapMatcher([]), {})
+
+  @staticmethod
+  def _download(name, tag):
+    url = f"{expressway.BASE_URL}/{expressway.ENDPOINTS[name]}.xml"
+    response = requests.get(url, timeout=LIVE_TIMEOUT_S)
+    response.raise_for_status()
+    return freeway_lanes.read_xml(response.content, tag)
+
+  def refresh_metadata(self, now):
+    if now >= self._next_metadata_update:
+      try:
+        self._update_metadata(now)
+      except (requests.RequestException, ET.ParseError, ValueError) as e:
+        cloudlog.warning(f"tdxd: 省道快速公路圖資更新失敗 ({type(e).__name__})")
+
+  def _update_metadata(self, monotonic_now):
+    self._next_metadata_update = monotonic_now + VD_METADATA_RETRY_S
+    section_data = self._download('Section', 'SectionList')
+    shape_data = self._download('SectionShape', 'SectionShapeList')
+    station_data = self._download('VD', 'VDList')
+    version = section_data.findtext('LinkVersion')
+    if not version or version != shape_data.findtext('LinkVersion') or version != station_data.findtext('LinkVersion'):
+      raise ValueError('inconsistent expressway metadata')
+    records = expressway.static_sections(section_data)
+    section_map = {sid: data for sid, data in freeway_lanes.parse_sections(section_data).items() if sid in records}
+    routes = {sid: data[0] for sid, data in section_map.items()}
+    matcher = LocalMapMatcher(expressway.static_shapes(shape_data, routes, records))
+    if not matcher.sections:
+      raise ValueError('no expressway shapes')
+
+    def locate(entry, link, route):
+      bearing = expressway.BEARINGS.get(link.findtext('Bearing'))
+      if bearing is None or route not in route_names:
+        return None
+      return expressway.station_mile(matcher, section_map, route, float(entry.findtext('PositionLat')),
+                                     float(entry.findtext('PositionLon')), bearing)
+
+    route_names = {data[0]: records[sid].findtext('RoadName', '') for sid, data in section_map.items()}
+    stations = freeway_lanes.parse_stations(station_data, locate=locate)
+    self._station_keys = {(station_id, link_id) for route_stations in stations.values()
+                          for _, station_id, link_id in route_stations}
+    self._metadata = (version, section_map, stations)
+    self.map_data = (matcher, route_names)
+    self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
+
+  def _read_live(self, data, version, now, expected_version):
+    # THB live and static feeds can publish different LinkVersions. Only use
+    # observations whose exact station and directional link both match the index.
+    return {key: reading for key, reading in freeway_lanes.parse_live(data, now).items() if key in self._station_keys}
+
+  def _road_label(self, road_id):
+    return next((name for (road, _), name in self.map_data[1].items() if road == road_id), '')
 
 
 # ==========================================
@@ -537,7 +686,11 @@ class NetworkWorker:
     self.matcher = matcher  # 主執行緒讀取；更新圖資時整個物件替換
     self.client = FreewayDataClient()
     self.lanes = FreewayLaneClient()
+    self.expressway_client = FreewayDataClient(provincial=True)
+    self.expressway_lanes = ExpresswayLaneClient()
+    self.active_expressway = False
     self._params = Params()
+    self._tdx_live = tdx_live.TdxLiveClient()
     self._shapes_attempts = 0
     self._next_shapes_attempt = 0.0
     self._last_live_update = -float('inf')
@@ -547,10 +700,17 @@ class NetworkWorker:
     self._thread.start()
 
   def _maybe_update_shapes(self, now):
-    if self._shapes_attempts >= SHAPES_MAX_ATTEMPTS or now < self._next_shapes_attempt or _cache_is_fresh():
+    if (self._tdx_live.cooling_down() or self._shapes_attempts >= SHAPES_MAX_ATTEMPTS
+        or now < self._next_shapes_attempt or _cache_is_fresh()):
       return
     self._shapes_attempts += 1
-    shapes = download_shapes(tdx_auth.read_credentials(self._params))
+    try:
+      shapes = download_shapes(tdx_auth.read_credentials(self._params))
+    except tdx_auth.TdxRateLimited as e:
+      self._shapes_attempts -= 1
+      self._tdx_live.pause(e)
+      cloudlog.warning(f"tdxd: TDX rate limited; retry in {e.retry_seconds:.0f}s")
+      return
     if shapes is None:
       self._next_shapes_attempt = now + SHAPES_RETRY_INTERVAL_S
       return
@@ -564,9 +724,21 @@ class NetworkWorker:
         now = time.monotonic()
         if now - self._last_live_update >= LIVE_UPDATE_INTERVAL_S:
           self._last_live_update = now
-          self.client.update_data(self.matcher)
-          self.lanes.update(now)
+          source = None
+          try:
+            if self._tdx_live.prepare(tdx_auth.read_credentials(self._params)):
+              source = self._tdx_live
+          except (requests.RequestException, ValueError) as e:
+            cloudlog.warning(f"tdxd: TDX authentication failed ({type(e).__name__}); using Freeway Bureau")
+          if self.active_expressway:
+            expressway_matcher, _ = self.expressway_lanes.map_data
+            self.expressway_client.update_data(expressway_matcher, source)
+            self.expressway_lanes.update(now, source)
+          else:
+            self.client.update_data(self.matcher, source)
+            self.lanes.update(now, source)
 
+        self.expressway_lanes.refresh_metadata(time.monotonic())
         self._maybe_update_shapes(time.monotonic())
       except Exception:
         cloudlog.exception("tdxd: 網路執行緒例外")
@@ -629,10 +801,22 @@ def main():
     last_calc_time = current_time
 
     matcher = worker.matcher
-    client = worker.client
+    provincial_matcher, _ = worker.expressway_lanes.map_data
+    freeway_id, freeway_dist = matcher.match_current_section(lat, lon, 300, bearing)
+    expressway_id, expressway_dist = provincial_matcher.match_current_section(lat, lon, VD_MATCH_DISTANCE_M, bearing)
+    use_expressway = expressway_dist < freeway_dist
+    if use_expressway != worker.active_expressway:
+      stable_current_section = stable_ahead_section = None
+      current_section_miss_count = 0
+      ahead_section_history.clear()
+      worker.active_expressway = use_expressway
+    if use_expressway:
+      matcher, client, lane_client = provincial_matcher, worker.expressway_client, worker.expressway_lanes
+      raw_current_section = expressway_id
+    else:
+      client, lane_client = worker.client, worker.lanes
+      raw_current_section = freeway_id
     my_direction = bearing_to_direction(bearing)
-
-    raw_current_section = matcher.find_current_section(lat, lon, threshold_meters=300, bearing_deg=bearing)
 
     if raw_current_section is not None:
       stable_current_section = raw_current_section
@@ -673,12 +857,15 @@ def main():
     tdx.speed = int(curr_speed)
     tdx.nextSectionId = str(stable_ahead_section) if stable_ahead_section else ""
     tdx.nextSpeed = int(ahead_speed)
+    if use_expressway and lane_gps_ok and raw_current_section is not None:
+      tdx.laneRoadLabel = matcher.sections[raw_current_section]['road_name']
 
-    reading = worker.lanes.find_ahead(matcher, raw_current_section, lat, lon, bearing) if lane_gps_ok else None
+    reading = lane_client.find_ahead(matcher, raw_current_section, lat, lon, bearing) if lane_gps_ok else None
     if reading is not None:
-      distance, collected, lanes = reading
+      distance, collected, lanes, road_label = reading
       tdx.laneDistanceM = distance
       tdx.laneCollectedAt = collected
+      tdx.laneRoadLabel = road_label
       lane_speeds = tdx.init('laneSpeeds', len(lanes))
       for lane, (lane_id, speed) in zip(lane_speeds, lanes, strict=True):
         lane.laneId = lane_id
@@ -701,6 +888,9 @@ def main():
 
     for evt in client.cached_events:
       evt_sid = evt.get('SectionID', '')
+      if use_expressway and (raw_current_section is None or matcher.sections.get(evt_sid, {}).get('route')
+                             != matcher.sections[raw_current_section]['route']):
+        continue
       evt_item = (_parse_event_type(evt.get('EventType', '0')), evt['Description'])
       evt_lat = evt.get('lat')
       evt_lon = evt.get('lon')

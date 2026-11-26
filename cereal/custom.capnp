@@ -106,6 +106,7 @@ struct Tdx @0xf98d843bfd7004a3 {
   laneSpeeds @6 :List(LaneSpeed); # 前方測站，依車道代碼排序
   laneDistanceM @7 :UInt16;      # 依道路里程估算的前方距離
   laneCollectedAt @8 :UInt64;    # 測站採集時間，Unix 秒
+  laneRoadLabel @9 :Text;        # 路況對應的道路名稱
 
   struct LaneSpeed {
     laneId @0 :UInt8;

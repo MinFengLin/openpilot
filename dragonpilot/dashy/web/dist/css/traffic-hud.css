@@ -44,6 +44,7 @@
   padding-top: 5px;
   border-top: 1px solid rgb(255 255 255 / 25%);
 }
+.traffic-hud-lane-road { color: #b8f2e8; font-weight: 700; }
 .traffic-hud-lane-header {
   display: flex;
   flex-wrap: wrap;

@@ -1,10 +1,11 @@
 """Traffic extraction tests runnable without cereal, hardware, or UI dependencies."""
 import ast
+from datetime import datetime
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from dragonpilot.selfdrive.controls.lib.tdx import freeway_lanes
+from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes
 
 
 class FakeSubMaster(dict):
@@ -53,6 +54,7 @@ class TestTdxExtraction(unittest.TestCase):
 
     def test_lane_speed_preserves_missing_samples_and_station_metadata(self):
         sm = FakeSubMaster()
+        sm['tdx'].laneRoadLabel = '國一・汐五高架'
         sm['tdx'].laneDistanceM = 1800
         sm['tdx'].laneCollectedAt = 1795618320
         sm['tdx'].laneSpeeds = [
@@ -61,6 +63,7 @@ class TestTdxExtraction(unittest.TestCase):
         ]
         self.namespace['_is_metric'] = False
         result = self.extract(sm)
+        self.assertEqual(result['laneRoadLabel'], '國一・汐五高架')
         self.assertEqual(result['laneDistanceM'], 1800)
         self.assertEqual(result['laneCollectedAt'], 1795618320)
         self.assertEqual(result['laneSpeeds'], [
@@ -88,6 +91,35 @@ class TestTdxExtraction(unittest.TestCase):
 
 
 class TestFreewayLaneSelection(unittest.TestCase):
+    def test_road_labels_distinguish_parallel_routes(self):
+        self.assertEqual(freeway_lanes.route_label('000010'), '國一・平面')
+        self.assertEqual(freeway_lanes.route_label('00001A'), '國一・汐五高架')
+        self.assertEqual(freeway_lanes.route_label('00001B'), '')
+
+    def test_expressway_index_excludes_regular_provincial_roads(self):
+        root = freeway_lanes.read_xml(b"""<SectionList><Sections>
+          <Section><SectionID>express</SectionID><RoadClass>1</RoadClass></Section>
+          <Section><SectionID>regular</SectionID><RoadClass>3</RoadClass></Section>
+        </Sections></SectionList>""", 'SectionList')
+        self.assertEqual(list(expressway.static_sections(root)), ['express'])
+        self.assertTrue(expressway.same_road('台64線', '臺64'))
+        self.assertFalse(expressway.same_road('台64線', '台65線'))
+
+    def test_tdx_lane_json_obeys_same_freshness_and_status_rules(self):
+        reading = {'VDID': 'station', 'Status': 0, 'DataCollectTime': '2026-11-26T12:00:00+08:00',
+                   'LinkFlows': [{'LinkID': 'link', 'Lanes': [
+                       {'LaneID': 2, 'LaneType': 1, 'Speed': '30.4'},
+                       {'LaneID': 0, 'LaneType': 1, 'Speed': 0, 'Vehicles': [{'Volume': 1}]},
+                       {'LaneID': 1, 'LaneType': 8, 'Speed': 22},
+                   ]}]}
+        collected = datetime.fromisoformat(reading['DataCollectTime']).timestamp()
+        feed = {'VDLives': [reading]}
+        self.assertEqual(freeway_lanes.parse_live(feed, collected + 120),
+                         {('station', 'link'): (collected, ((0, 0), (2, 30)))})
+        self.assertEqual(freeway_lanes.parse_live(feed, collected + 181), {})
+        reading['Status'] = 1
+        self.assertEqual(freeway_lanes.parse_live(feed, collected + 120), {})
+
     def test_selects_fresh_station_ahead_on_same_road_and_direction(self):
         sections = {'north': (('N1', 'N'), 35000, 33000)}
         xml = freeway_lanes.read_xml(b"""

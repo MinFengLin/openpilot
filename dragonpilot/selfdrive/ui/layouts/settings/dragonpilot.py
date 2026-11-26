@@ -296,7 +296,7 @@ class DragonpilotLayout(Widget):
         callback=lambda: request('delete'), enabled=available)
 
   def _add_tdx_items(self):
-    self._toggles['tdx_title'] = simple_item(lambda: tr('### TDX 路段圖資 ###'))
+    self._toggles['tdx_title'] = simple_item(lambda: tr('### TDX 路段圖資與即時路況 ###'))
 
     def edit_field(field, title):
       if not ui_state.is_offroad():

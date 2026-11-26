@@ -33,6 +33,7 @@
       speedStatus: congestion,
       event: descriptions.join(' ／ '),
       lanes: hasLanes ? lanes : [],
+      laneRoadLabel: traffic.laneRoadLabel || '',
       laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
       distance: hasLanes ? (traffic.laneDistanceM < 1000
         ? `前方 ${traffic.laneDistanceM} m` : `前方 ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
@@ -76,8 +77,10 @@
   laneHeader.append(laneTitle, laneDistance);
   const laneList = document.createElement('ol');
   laneList.className = 'traffic-hud-lane-list';
+  const laneRoad = document.createElement('div');
+  laneRoad.className = 'traffic-hud-lane-road';
   lanePanel.append(laneHeader, laneList);
-  panel.append(speedLine, eventLine, lanePanel);
+  panel.append(speedLine, eventLine, laneRoad, lanePanel);
   host.appendChild(panel);
 
   function clearEvent() {
@@ -125,6 +128,8 @@
     const display = !alertVisible && !document.hidden && page && page.getClientRects().length
       && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
     panel.hidden = !display;
+    laneRoad.textContent = display?.laneRoadLabel || '';
+    laneRoad.hidden = !display?.laneRoadLabel;
     updateLanes(display);
     if (!display) {
       clearEvent();

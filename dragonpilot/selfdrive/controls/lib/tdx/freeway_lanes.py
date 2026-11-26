@@ -1,6 +1,7 @@
 """Highway Bureau mainline VD data keyed by road and direction."""
 from collections import defaultdict
 from datetime import datetime
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -40,7 +41,14 @@ def parse_sections(root):
   return sections
 
 
-def parse_stations(root):
+def route_label(road_id):
+  return {
+    '000010': '國一・平面',
+    '00001A': '國一・汐五高架',
+  }.get(road_id, '')
+
+
+def parse_stations(root, locate=None):
   routes = defaultdict(list)
   for entry in root.findall('VDs/VD'):
     if entry.findtext('DetectionType') != '1':  # Mainline, excluding ramps.
@@ -49,57 +57,75 @@ def parse_stations(root):
     road = entry.findtext('RoadID')
     if not station_id or not road:
       continue
-    try:
-      mile = mileage_m(entry.findtext('LocationMile'))
-    except ValueError:
-      continue
     for link in entry.findall('DetectionLinks/DetectionLink'):
       direction = link.findtext('RoadDirection')
       link_id = link.findtext('LinkID')
-      if direction and link_id:
-        routes[road, direction].append((mile, station_id, link_id))
+      if not direction or not link_id:
+        continue
+      route = (road, direction)
+      try:
+        mile = mileage_m(entry.findtext('LocationMile')) if locate is None else locate(entry, link, route)
+      except (TypeError, ValueError):
+        continue
+      if mile is not None:
+        routes[route].append((mile, station_id, link_id))
   return routes
+
+
+def is_fresh_timestamp(value, now, max_age=MAX_AGE_S):
+  try:
+    timestamp = datetime.fromisoformat(value)
+    return timestamp.tzinfo is not None and 0 <= now - timestamp.timestamp() <= max_age
+  except (ValueError, TypeError):
+    return False
+
+
+def _text(record, key):
+  value = record.get(key) if isinstance(record, dict) else record.findtext(key)
+  return '' if value is None else str(value)
+
+
+def _rows(record, group, item):
+  if isinstance(record, dict):
+    values = record.get(group)
+    return (value for value in values if isinstance(value, dict)) if isinstance(values, list) else ()
+  return record.findall(f'{group}/{item}')
 
 
 def parse_live(root, now):
   readings = {}
-  for entry in root.findall('VDLives/VDLive'):
-    station_id = entry.findtext('VDID')
-    if not station_id or entry.findtext('Status') != '0':
+  for entry in _rows(root, 'VDLives', 'VDLive'):
+    station_id = _text(entry, 'VDID')
+    if not station_id or _text(entry, 'Status') != '0':
       continue
-    try:
-      timestamp = datetime.fromisoformat(entry.findtext('DataCollectTime', ''))
-      if timestamp.tzinfo is None:
-        continue
-      collected = timestamp.timestamp()
-    except ValueError:
+    timestamp = _text(entry, 'DataCollectTime')
+    if not is_fresh_timestamp(timestamp, now):
       continue
-    if not 0 <= now - collected <= MAX_AGE_S:
-      continue
-    for flow in entry.findall('LinkFlows/LinkFlow'):
-      link_id = flow.findtext('LinkID')
+    collected = datetime.fromisoformat(timestamp).timestamp()
+    for flow in _rows(entry, 'LinkFlows', 'LinkFlow'):
+      link_id = _text(flow, 'LinkID')
       if not link_id:
         continue
       lanes = {}
-      for lane in flow.findall('Lanes/Lane'):
-        if lane.findtext('LaneType') == '8':  # Shoulder.
+      for lane in _rows(flow, 'Lanes', 'Lane'):
+        if _text(lane, 'LaneType') == '8':  # Shoulder.
           continue
         try:
-          lane_id = int(lane.findtext('LaneID', ''))
+          lane_id = int(_text(lane, 'LaneID'))
         except ValueError:
           continue
         if not 0 <= lane_id <= 255:
           continue
         try:
-          speed = int(lane.findtext('Speed', ''))
+          speed = float(_text(lane, 'Speed'))
         except ValueError:
           speed = -1
         if speed == 0 and not any(
-          vehicle.findtext('Volume', '').isdigit() and int(vehicle.findtext('Volume')) > 0
-          for vehicle in lane.findall('Vehicles/Vehicle')
+          volume.isascii() and volume.isdigit() and int(volume) > 0
+          for volume in (_text(vehicle, 'Volume') for vehicle in _rows(lane, 'Vehicles', 'Vehicle'))
         ):
           speed = -1  # The feed reports zero for lanes without vehicle samples.
-        lanes[lane_id] = speed if 0 <= speed <= 150 else -1
+        lanes[lane_id] = round(speed) if math.isfinite(speed) and 0 <= speed <= 150 else -1
       if any(speed >= 0 for speed in lanes.values()):
         readings[station_id, link_id] = (collected, tuple(sorted(lanes.items())))
   return readings
