@@ -59,6 +59,21 @@ test('lane-only data shows distance and omits missing lanes', () => {
   assert.equal(getDisplay(sm, now), null);
 });
 
+test('speed drop needs a distinct ahead section and a substantial drop in raw km/h', () => {
+  const sm = state();
+  Object.assign(sm.tdx, { sectionId: 'current', nextSectionId: 'ahead', speed: 90,
+    nextSpeed: 60, displayCurrentSpeed: '56', displayNextSpeed: '37', speedUnit: 'mph' });
+  assert.equal(getDisplay(sm, now).speedDrop, '前方車流驟降 56 → 37 mph');
+  sm.tdx.nextSectionId = 'current';
+  assert.equal(getDisplay(sm, now).speedDrop, '');
+  sm.tdx.nextSectionId = 'ahead';
+  sm.tdx.speed = 89;
+  assert.equal(getDisplay(sm, now).speedDrop, '');
+  sm.tdx.speed = 100;
+  sm.tdx.nextSpeed = 61;
+  assert.equal(getDisplay(sm, now).speedDrop, '');
+});
+
 test('overflow scrolls the full hidden width at a fixed speed', () => {
   const metrics = getScrollMetrics(1000, 300);
   assert.equal(metrics.overflow, 700);

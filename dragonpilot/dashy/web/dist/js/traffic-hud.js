@@ -2,6 +2,8 @@
 (() => {
   'use strict';
   const STALE_MS = 4000;
+  const MIN_DROP_KPH = 30;
+  const MAX_DROP_AHEAD_KPH = 60;
   const congestionLabels = { smooth: '順暢', slow: '緩慢', congested: '壅塞' };
 
   function getDisplay(sm, now = Date.now()) {
@@ -13,6 +15,10 @@
       && traffic.displayNextSpeed != null;
     const speed = hasSpeed ? `前方車流 ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '';
     const congestion = hasSpeed ? congestionLabels[traffic.congestion] || '' : '';
+    const hasSpeedDrop = hasSpeed && traffic.nextSpeed <= MAX_DROP_AHEAD_KPH
+      && Number.isFinite(traffic.speed) && traffic.speed <= 150
+      && traffic.speed - traffic.nextSpeed >= MIN_DROP_KPH && traffic.displayCurrentSpeed != null
+      && traffic.sectionId && traffic.nextSectionId && traffic.sectionId !== traffic.nextSectionId;
     const events = Array.isArray(traffic.events) ? traffic.events : [];
     const descriptions = [];
     for (const event of events) {
@@ -32,6 +38,7 @@
       speedUnit: traffic.speedUnit,
       speedStatus: congestion,
       event: descriptions.join(' ／ '),
+      speedDrop: hasSpeedDrop ? `前方車流驟降 ${traffic.displayCurrentSpeed} → ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '',
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
       laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
@@ -68,6 +75,8 @@
   eventLine.className = 'traffic-hud-event';
   const eventText = document.createElement('span');
   eventLine.appendChild(eventText);
+  const dropLine = document.createElement('div');
+  dropLine.className = 'traffic-hud-speed-drop';
   const lanePanel = document.createElement('div');
   lanePanel.className = 'traffic-hud-lanes';
   const laneHeader = document.createElement('div');
@@ -80,7 +89,7 @@
   const laneRoad = document.createElement('div');
   laneRoad.className = 'traffic-hud-lane-road';
   lanePanel.append(laneHeader, laneList);
-  panel.append(speedLine, eventLine, laneRoad, lanePanel);
+  panel.append(speedLine, eventLine, dropLine, laneRoad, lanePanel);
   host.appendChild(panel);
 
   function clearEvent() {
@@ -128,6 +137,8 @@
     const display = !alertVisible && !document.hidden && page && page.getClientRects().length
       && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
     panel.hidden = !display;
+    dropLine.textContent = display?.speedDrop || '';
+    dropLine.hidden = !display?.speedDrop;
     laneRoad.textContent = display?.laneRoadLabel || '';
     laneRoad.hidden = !display?.laneRoadLabel;
     updateLanes(display);

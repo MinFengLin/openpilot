@@ -404,12 +404,14 @@ def extract_tdx(sm, started_frame=0):
         return None
 
     tdx = sm['tdx']
+    current_speed = int(tdx.speed)
     next_speed = int(tdx.nextSpeed)
     speed_available = 0 < next_speed <= 150
     return {
         'sectionId': str(tdx.sectionId),
         'nextSectionId': str(tdx.nextSectionId),
-        'speed': int(tdx.speed),
+        'speed': current_speed,
+        'displayCurrentSpeed': format_speed(current_speed / Conversions.MS_TO_KPH) if 0 < current_speed <= 150 else None,
         'nextSpeed': next_speed,
         'congestion': str(tdx.congestion),
         'displayNextSpeed': format_speed(next_speed / Conversions.MS_TO_KPH) if speed_available else None,

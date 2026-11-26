@@ -923,8 +923,9 @@ def main():
     msg = messaging.new_message('tdx')
     tdx = msg.tdx
 
-    curr_speed = client.cached_speeds.get(str(stable_current_section).strip(), -1) if stable_current_section else -1
-    ahead_speed = client.cached_speeds.get(str(stable_ahead_section).strip(), -1) if stable_ahead_section else -1
+    speed_snapshot = client.cached_speeds
+    curr_speed = speed_snapshot.get(str(stable_current_section).strip(), -1) if stable_current_section else -1
+    ahead_speed = speed_snapshot.get(str(stable_ahead_section).strip(), -1) if stable_ahead_section else -1
 
     tdx.sectionId = str(stable_current_section) if stable_current_section else ""
     tdx.speed = int(curr_speed)
