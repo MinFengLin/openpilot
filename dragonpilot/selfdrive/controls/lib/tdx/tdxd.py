@@ -60,6 +60,8 @@ FREEWAY_DATA_URL = "https://tisvcloud.freeway.gov.tw/history/motc20"
 VD_METADATA_INTERVAL_S = 86400
 VD_METADATA_RETRY_S = 600
 VD_MATCH_DISTANCE_M = 35
+TDX_ROAD_MATCH_MAX_AGE_S = 3.0
+TDX_ROAD_MATCH_COUNT = 2
 
 TOPOLOGY_MAX_GAP_M = 100.0       # 前一段終點與下一段起點的最大距離（原 50m，大量相鄰路段接不上）
 TOPOLOGY_MAX_ANGLE_DEG = 45.0    # 方位差上限，排除對向車道
@@ -443,17 +445,18 @@ class FreewayDataClient:
     return {'EventType': str(event_type or '0'), 'Description': description,
             'SectionID': str(section) if section else '', 'lat': lat, 'lon': lon, 'direction': direction}
 
-  def _freeway_events(self, matcher):
-    if self.provincial:
-      return []
+  def _public_events(self, matcher):
     response = _http_get(self.events_url, LIVE_HEADERS, LIVE_TIMEOUT_S)
     response.raise_for_status()
     root = freeway_lanes.read_xml(response.content, 'LiveEventList')
+    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+    if root.find('LiveEvents') is None or not freeway_lanes.is_fresh_timestamp(root.findtext('UpdateTime'), now):
+      raise ValueError('missing or stale public events')
     return [parsed for event in root.findall('.//LiveEvent') if (parsed := self._event(
       matcher, event.findtext('EventType'), event.findtext('Description'), event.findtext('Positions'),
       event.findtext('.//Direction'))) is not None]
 
-  def _freeway_speeds(self):
+  def _public_speeds(self):
     if self.provincial:
       response = requests.get(f"{expressway.BASE_URL}/{expressway.ENDPOINTS['LiveTraffic']}.xml", timeout=LIVE_TIMEOUT_S)
     else:
@@ -461,9 +464,13 @@ class FreewayDataClient:
     response.raise_for_status()
     root = freeway_lanes.read_xml(response.content, 'LiveTrafficList')
     now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-    return self._speeds((traffic.findtext('SectionID'), traffic.findtext('TravelSpeed'))
-                        for traffic in root.findall('.//LiveTraffic') if not self.provincial
-                        or freeway_lanes.is_fresh_timestamp(traffic.findtext('DataCollectTime'), now, expressway.TRAFFIC_MAX_AGE_S))
+    max_age = expressway.TRAFFIC_MAX_AGE_S if self.provincial else freeway_lanes.MAX_AGE_S
+    speeds = self._speeds((traffic.findtext('SectionID'), traffic.findtext('TravelSpeed'))
+                          for traffic in root.findall('.//LiveTraffic')
+                          if freeway_lanes.is_fresh_timestamp(traffic.findtext('DataCollectTime'), now, max_age))
+    if not speeds:
+      raise ValueError('no fresh public section speeds')
+    return speeds
 
   @staticmethod
   def _speeds(records):
@@ -510,23 +517,35 @@ class FreewayDataClient:
       raise ValueError('no fresh section speeds')
     return speeds
 
-  def update_data(self, matcher, source=None):
-    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-    bureau = 'Highway Bureau' if self.provincial else 'Freeway Bureau'
-    for name, primary, fallback in (
-      ('cached_events', lambda: self._tdx_events(matcher, source, now), lambda: self._freeway_events(matcher)),
-      ('cached_speeds', lambda: self._tdx_speeds(source, now), self._freeway_speeds),
-    ):
-      if source is not None and not source.cooling_down():
-        try:
-          setattr(self, name, primary())
-          continue
-        except (requests.RequestException, ValueError) as e:
-          cloudlog.warning(f"tdxd: TDX {name} failed ({type(e).__name__}); using {bureau}")
+  @staticmethod
+  def _refresh_live(name, public_fetch, tdx_fetch, get_tdx, default):
+    if public_fetch is not None:
       try:
-        setattr(self, name, fallback())
+        return public_fetch()
       except (requests.RequestException, ET.ParseError, ValueError) as e:
-        cloudlog.warning(f"tdxd: {bureau} {name} failed ({type(e).__name__})")
+        cloudlog.warning(f"tdxd: public {name} failed ({type(e).__name__})")
+    source = get_tdx()
+    if source is not None:
+      try:
+        return tdx_fetch(source)
+      except (requests.RequestException, ValueError) as e:
+        cloudlog.warning(f"tdxd: TDX {name} failed ({type(e).__name__})")
+    return default
+
+  def update_speeds(self, get_tdx):
+    def fetch_tdx(source):
+      now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+      return self._tdx_speeds(source, now)
+
+    self.cached_speeds = self._refresh_live('section speeds', self._public_speeds, fetch_tdx, get_tdx, {})
+
+  def update_events(self, matcher, get_tdx):
+    def fetch_tdx(source):
+      now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+      return self._tdx_events(matcher, source, now)
+
+    public_fetch = None if self.provincial else lambda: self._public_events(matcher)
+    self.cached_events = self._refresh_live('road events', public_fetch, fetch_tdx, get_tdx, [])
 
 
 class FreewayLaneClient:
@@ -565,38 +584,43 @@ class FreewayLaneClient:
     self._metadata = (version, section_map, station_map)
     self._next_metadata_update = monotonic_now + VD_METADATA_INTERVAL_S
 
-  def update(self, monotonic_now, source=None):
+  def update(self, monotonic_now, get_tdx):
     if monotonic_now >= self._next_metadata_update:
       try:
         self._update_metadata(monotonic_now)
       except (requests.RequestException, ET.ParseError, ValueError) as e:
-        cloudlog.warning(f"tdxd: 高公局偵測器清單更新失敗: {e}")
+        cloudlog.warning(f"tdxd: {self.bureau} station metadata failed ({type(e).__name__})")
 
     if self._metadata is None:
       return
 
     version, sections, stations = self._metadata
-    now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-    if source is not None and not source.cooling_down():
-      try:
-        data = source.fetch(self.tdx_vd_path, 'VDLives', now)
-        readings = self._read_live(data, data.get('LinkVersion'), now, version)
-        if not readings:
-          raise ValueError('no fresh lane speeds')
-        self.snapshot = (sections, stations, readings)
-        return
-      except (requests.RequestException, ValueError) as e:
-        cloudlog.warning(f"tdxd: TDX lane speeds failed ({type(e).__name__}); using {self.bureau}")
-
     try:
       live = self._download('VDLive', 'VDLiveList')
       live_version = live.findtext('LinkVersion')
       if self.require_link_version and live_version != version:
         self._next_metadata_update = min(self._next_metadata_update, monotonic_now + VD_METADATA_RETRY_S)
+      now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
       readings = self._read_live(live, live_version, now, version)
+      if not readings:
+        raise ValueError('no fresh public lane speeds')
       self.snapshot = (sections, stations, readings)
+      return
     except (requests.RequestException, ET.ParseError, ValueError) as e:
       cloudlog.warning(f"tdxd: {self.bureau} lane speeds failed ({type(e).__name__})")
+
+    source = get_tdx()
+    if source is not None:
+      try:
+        now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
+        data = source.fetch(self.tdx_vd_path, 'VDLives', now)
+        readings = self._read_live(data, data.get('LinkVersion'), now, version)
+        if readings:
+          self.snapshot = (sections, stations, readings)
+          return
+      except (requests.RequestException, ValueError) as e:
+        cloudlog.warning(f"tdxd: TDX lane speeds failed ({type(e).__name__})")
+    # On a brief outage only retain observations still fresh at selection time.
 
   def find_ahead(self, matcher, section_id, lat, lon, bearing):
     sections, stations, readings = self.snapshot
@@ -689,11 +713,13 @@ class NetworkWorker:
     self.expressway_client = FreewayDataClient(provincial=True)
     self.expressway_lanes = ExpresswayLaneClient()
     self.active_expressway = False
+    self._live_road_match = None
     self._params = Params()
     self._tdx_live = tdx_live.TdxLiveClient()
     self._shapes_attempts = 0
     self._next_shapes_attempt = 0.0
-    self._last_live_update = -float('inf')
+    self._last_public_live_update = {'freeway': -math.inf, 'expressway': -math.inf}
+    self._last_tdx_live_update = -math.inf
     self._thread = threading.Thread(target=self._run, name="tdxd_net", daemon=True)
 
   def start(self):
@@ -717,26 +743,69 @@ class NetworkWorker:
     self._shapes_attempts = SHAPES_MAX_ATTEMPTS  # 本次啟動已成功，不再下載
     self.matcher = LocalMapMatcher(shapes)
 
+  def observe_live_road(self, road, now):
+    previous = self._live_road_match
+    if road is None:
+      self._live_road_match = None
+      return
+    count = 1
+    if previous is not None and previous[0] == road and 0 < now - previous[1] <= TDX_ROAD_MATCH_MAX_AGE_S:
+      count = min(previous[2] + 1, TDX_ROAD_MATCH_COUNT)
+    self._live_road_match = (road, now, count)
+
+  def _confirmed_road(self, now):
+    match = self._live_road_match
+    if (match is not None and match[2] >= TDX_ROAD_MATCH_COUNT
+        and 0 <= now - match[1] <= TDX_ROAD_MATCH_MAX_AGE_S):
+      return match[0]
+    return None
+
+  def _update_live_data(self, now):
+    road = self._confirmed_road(now)
+    if road is None or now - self._last_public_live_update[road] < LIVE_UPDATE_INTERVAL_S:
+      return
+    self._last_public_live_update[road] = now
+    tdx_attempted = False
+    source = None
+
+    def get_tdx():
+      nonlocal tdx_attempted, source
+      request_time = time.monotonic()
+      if self._confirmed_road(request_time) != road or self._tdx_live.cooling_down():
+        return None
+      if tdx_attempted:
+        return source
+      if request_time - self._last_tdx_live_update < LIVE_UPDATE_INTERVAL_S:
+        return None
+      credentials = tdx_auth.read_credentials(self._params)
+      if credentials is None:
+        return None
+
+      tdx_attempted = True
+      self._last_tdx_live_update = request_time
+      try:
+        if self._tdx_live.prepare(credentials) and self._confirmed_road(time.monotonic()) == road:
+          source = self._tdx_live
+      except (requests.RequestException, ValueError) as e:
+        cloudlog.warning(f"tdxd: TDX authentication failed ({type(e).__name__})")
+      return source
+
+    if road == 'expressway':
+      matcher, _ = self.expressway_lanes.map_data
+      client, lane_client = self.expressway_client, self.expressway_lanes
+    else:
+      matcher, client, lane_client = self.matcher, self.client, self.lanes
+
+    client.update_speeds(get_tdx)
+    lane_client.update(now, get_tdx)
+    client.update_events(matcher, get_tdx)
+
   def _run(self):
     while True:
       try:
         # 即時路況優先，圖資下載（最長 SHAPES_TIMEOUT_S）排在後面
         now = time.monotonic()
-        if now - self._last_live_update >= LIVE_UPDATE_INTERVAL_S:
-          self._last_live_update = now
-          source = None
-          try:
-            if self._tdx_live.prepare(tdx_auth.read_credentials(self._params)):
-              source = self._tdx_live
-          except (requests.RequestException, ValueError) as e:
-            cloudlog.warning(f"tdxd: TDX authentication failed ({type(e).__name__}); using Freeway Bureau")
-          if self.active_expressway:
-            expressway_matcher, _ = self.expressway_lanes.map_data
-            self.expressway_client.update_data(expressway_matcher, source)
-            self.expressway_lanes.update(now, source)
-          else:
-            self.client.update_data(self.matcher, source)
-            self.lanes.update(now, source)
+        self._update_live_data(now)
 
         self.expressway_lanes.refresh_metadata(time.monotonic())
         self._maybe_update_shapes(time.monotonic())
@@ -810,6 +879,10 @@ def main():
       current_section_miss_count = 0
       ahead_section_history.clear()
       worker.active_expressway = use_expressway
+    live_road = None
+    if lane_gps_ok and min(freeway_dist, expressway_dist) < VD_MATCH_DISTANCE_M:
+      live_road = 'expressway' if use_expressway else 'freeway'
+    worker.observe_live_road(live_road, current_time)
     if use_expressway:
       matcher, client, lane_client = provincial_matcher, worker.expressway_client, worker.expressway_lanes
       raw_current_section = expressway_id
