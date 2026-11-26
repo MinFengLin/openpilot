@@ -27,7 +27,7 @@ from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from dragonpilot.mapd import regions
-from dragonpilot.selfdrive.controls.lib.tdx.tdx_auth import CREDENTIALS_PARAM, read_credentials
+from dragonpilot.selfdrive.controls.lib.tdx.tdx_auth import CREDENTIALS_PARAM, read_credential_fields
 from openpilot.system.hardware import HARDWARE
 from dragonpilot.settings import SETTINGS, extract_depends_on_refs
 
@@ -298,50 +298,41 @@ class DragonpilotLayout(Widget):
   def _add_tdx_items(self):
     self._toggles['tdx_title'] = simple_item(lambda: tr('### TDX 路段圖資 ###'))
 
-    def configured():
-      return read_credentials(ui_state.params) is not None
-
-    def edit_credentials():
+    def edit_field(field, title):
       if not ui_state.is_offroad():
         return
-      current = read_credentials(ui_state.params)
-      id_keyboard = Keyboard(min_text_size=1)
-      id_keyboard.set_title('TDX Client ID')
-      if current is not None:
-        id_keyboard.set_text(current[0])
+      is_secret = field == 'client_secret'
+      keyboard = Keyboard(min_text_size=1, password_mode=is_secret)
+      keyboard.set_title(title)
+      if not is_secret:
+        keyboard.set_text(read_credential_fields(ui_state.params).get(field, ''))
 
-      def edit_secret(result):
-        client_id = id_keyboard.text.strip()
-        if result != DialogResult.CONFIRM or not client_id or not ui_state.is_offroad():
+      def save(result):
+        value = keyboard.text.strip()
+        keyboard.clear()
+        if result != DialogResult.CONFIRM or not value or not ui_state.is_offroad():
           return
-        secret_keyboard = Keyboard(min_text_size=1, password_mode=True)
-        secret_keyboard.set_title('TDX Client Secret')
+        fields = read_credential_fields(ui_state.params)
+        if not is_secret and field in fields and fields[field] != value:
+          fields.pop('client_secret', None)
+        fields[field] = value
+        ui_state.params.put(CREDENTIALS_PARAM, fields, block=True)
 
-        def save_credentials(secret_result):
-          secret = secret_keyboard.text.strip()
-          secret_keyboard.clear()
-          if secret_result == DialogResult.CONFIRM and secret and ui_state.is_offroad():
-            ui_state.params.put(CREDENTIALS_PARAM, {'client_id': client_id, 'client_secret': secret}, block=True)
-
-        secret_keyboard.set_callback(save_credentials)
-        gui_app.push_widget(secret_keyboard)
-
-      id_keyboard.set_callback(edit_secret)
-      gui_app.push_widget(id_keyboard)
+      keyboard.set_callback(save)
+      gui_app.push_widget(keyboard)
 
     def clear_credentials():
       if ui_state.is_offroad():
         ui_state.params.remove(CREDENTIALS_PARAM)
 
-    def key_status():
-      return tr('已儲存金鑰，更新路段圖資時使用') if configured() else tr('選填。免費高公局車速與事件可直接使用')
-
-    self._toggles['tdx_credentials'] = button_item(
-      lambda: tr('TDX API 金鑰'), lambda: tr('設定'), key_status,
-      callback=edit_credentials, enabled=ui_state.is_offroad)
+    for field, title in (('client_id', 'TDX Client ID'), ('client_secret', 'TDX Client Secret')):
+      self._toggles[f'tdx_{field}'] = button_item(
+        title, lambda field=field: tr('已儲存' if field in read_credential_fields(ui_state.params) else '設定'),
+        lambda field=field: tr('變更 Client ID 後需重新輸入 Secret' if field == 'client_id' else '輸入時會遮蔽'),
+        callback=lambda field=field, title=title: edit_field(field, title), enabled=ui_state.is_offroad)
     self._toggles['tdx_clear'] = button_item(
       lambda: tr('清除 TDX API 金鑰'), lambda: tr('清除'),
-      callback=clear_credentials, enabled=lambda: ui_state.is_offroad() and configured())
+      callback=clear_credentials, enabled=lambda: ui_state.is_offroad() and bool(read_credential_fields(ui_state.params)))
 
   def _refresh_visibility(self):
     # ui_state.CP is None when this panel is first built (the UI starts before the car is up),

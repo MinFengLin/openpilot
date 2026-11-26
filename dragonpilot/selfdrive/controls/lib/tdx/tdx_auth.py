@@ -5,17 +5,21 @@ CREDENTIALS_PARAM = 'dp_tdx_credentials'
 TOKEN_URL = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token'
 
 
-def read_credentials(params):
+def read_credential_fields(params):
   try:
     stored = params.get(CREDENTIALS_PARAM)
   except ValueError:
-    return None
+    return {}
   if not isinstance(stored, dict):
-    return None
-  client_id = stored.get('client_id')
-  client_secret = stored.get('client_secret')
-  if isinstance(client_id, str) and isinstance(client_secret, str) and client_id and client_secret:
-    return client_id, client_secret
+    return {}
+  return {field: stored[field] for field in ('client_id', 'client_secret')
+          if isinstance(stored.get(field), str) and stored[field]}
+
+
+def read_credentials(params):
+  fields = read_credential_fields(params)
+  if 'client_id' in fields and 'client_secret' in fields:
+    return fields['client_id'], fields['client_secret']
   return None
 
 
