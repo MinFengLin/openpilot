@@ -26,8 +26,8 @@
         <input class="input input-bordered w-full" type="password" maxlength="255" autocomplete="new-password">
       </label>
       <div class="flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-primary btn-sm" value="save">儲存金鑰</button>
         <button type="submit" class="btn btn-outline btn-sm" value="check">驗證金鑰</button>
+        <button type="submit" class="btn btn-primary btn-sm" value="save">儲存金鑰</button>
       </div>
       <p class="text-sm" role="status" hidden></p>`;
     const [clientId, clientSecret] = form.querySelectorAll('input');

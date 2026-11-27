@@ -68,10 +68,15 @@ test('lane sample age advances and resets when the same station publishes again'
   Object.assign(sm.tdx, { laneDistanceM: 1200, laneStationPassed: true,
     laneCollectedAt: 930, laneSpeeds: [{ laneId: 0, speed: '20' }] });
   sm.recv_time.tdx = 1000;
-  assert.equal(getDisplay(sm, 1000000).laneAge, '採集於 1 分 10 秒前');
-  assert.equal(getDisplay(sm, 1003000).laneAge, '採集於 1 分 13 秒前');
+  assert.equal(getDisplay(sm, 1000000).laneAge, '收集於 1 分 10 秒前');
+  assert.equal(getDisplay(sm, 1003000).laneAge, '收集於 1 分 13 秒前');
+  Object.assign(sm.tdx, {laneDistanceM: 0, laneStationPassed: false});
+  const atStation = getDisplay(sm, 1003000);
+  assert.equal(atStation.distance, '');
+  assert.equal(atStation.lanes.length, 1);
+  assert.equal(atStation.laneAge, '收集於 1 分 13 秒前');
   sm.tdx.laneCollectedAt = 1001;
-  assert.equal(getDisplay(sm, 1003000).laneAge, '採集於 2 秒前');
+  assert.equal(getDisplay(sm, 1003000).laneAge, '收集於 2 秒前');
 });
 
 test('speed drop needs a distinct ahead section and a substantial drop in raw km/h', () => {

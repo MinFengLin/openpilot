@@ -11,7 +11,7 @@
     if (!Number.isFinite(seconds) || seconds < 0) return '';
     const minutes = Math.floor(seconds / 60);
     const detail = minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
-    return `採集於 ${detail}前`;
+    return `收集於 ${detail}前`;
   }
 
   function getDisplay(sm, now = Date.now()) {
@@ -52,7 +52,7 @@
       laneRoadLabel: traffic.laneRoadLabel || '',
       laneAge: hasLanes ? formatLaneAge(traffic.laneCollectedAt, now) : '',
       laneCaption: hasLanes ? `車速：${lanes.length} 道（左 → 右） · ${traffic.speedUnit}` : '',
-      distance: hasLanes ? (traffic.laneDistanceM < 1000
+      distance: hasLanes && traffic.laneDistanceM > 0 ? (traffic.laneDistanceM < 1000
         ? `${stationPosition} ${traffic.laneDistanceM} m` : `${stationPosition} ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
       congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',
     };
@@ -129,6 +129,7 @@
     if (lanePanel.hidden) return;
     laneTitle.textContent = display.laneCaption;
     laneDistance.textContent = display.distance;
+    laneDistance.hidden = !display.distance;
     laneAge.textContent = display.laneAge;
     laneAge.hidden = !display.laneAge;
     const key = JSON.stringify(display.lanes);
