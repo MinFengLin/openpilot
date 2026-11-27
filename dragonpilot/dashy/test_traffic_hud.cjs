@@ -125,15 +125,16 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
     get offsetWidth() { this.reflows++; return this.scrollWidth; }
   }
   const host = new Element(); const page = new Element();
-  const driveStatus = new Element();
-  driveStatus.getBoundingClientRect = () => ({ bottom: 80 });
-  driveStatus.querySelectorAll = () => [{ getBoundingClientRect: () => ({ bottom: 120 }) }];
-  host.getBoundingClientRect = () => ({ top: 10 });
   const sm = state(); sm.recv_time.tdx = Date.now() / 1000;
   let tick;
+  let resize;
   const context = {
+    ResizeObserver: class {
+      constructor(callback) { resize = callback; }
+      observe() {}
+    },
     window: { sm, setInterval: callback => { tick = callback; }, addEventListener() {} },
-    document: { hidden: false, getElementById: id => ({ 'hud-page': page, 'hud-page-content': host, 'drive-status': driveStatus })[id],
+    document: { hidden: false, getElementById: id => ({ 'hud-page': page, 'hud-page-content': host })[id],
       createElement: () => new Element(), addEventListener() {} },
     getComputedStyle: () => ({ visibility: 'visible' }),
   };
@@ -142,12 +143,16 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
   assert.equal(text.classList.contains('traffic-hud-scroll'), true);
   assert.equal(eventLine.classList.contains('traffic-hud-warning'), true);
   let offset;
-  panel.style.setProperty = (key, value) => { if (key === '--traffic-hud-top') offset = value; };
-  panel.style.removeProperty = key => { if (key === '--traffic-hud-top') offset = undefined; };
-  tick();
-  assert.equal(offset, '126px');
-  driveStatus.hidden = true;
-  tick();
+  host.style.setProperty = (key, value) => { if (key === '--drive-status-offset') offset = value; };
+  host.style.removeProperty = key => { if (key === '--drive-status-offset') offset = undefined; };
+  panel.offsetHeight = 120;
+  resize();
+  assert.equal(offset, '136px');
+  panel.offsetHeight = 160;
+  resize();
+  assert.equal(offset, '176px');
+  panel.offsetHeight = 0;
+  resize();
   assert.equal(offset, undefined);
   const initialReflows = text.reflows;
   tick(); assert.equal(text.reflows, initialReflows);

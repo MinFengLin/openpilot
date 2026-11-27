@@ -166,15 +166,6 @@
       clearEvent();
       return;
     }
-    const driveStatus = document.getElementById('drive-status');
-    if (driveStatus && !driveStatus.hidden && driveStatus.getClientRects().length) {
-      const statusBottom = Math.max(driveStatus.getBoundingClientRect().bottom,
-        ...Array.from(driveStatus.querySelectorAll('.drive-status-detail:not([hidden])'),
-          detail => detail.getBoundingClientRect().bottom));
-      panel.style.setProperty('--traffic-hud-top', `${statusBottom - host.getBoundingClientRect().top + 16}px`);
-    } else {
-      panel.style.removeProperty('--traffic-hud-top');
-    }
     panel.dataset.congestion = display.congestion;
     speedValue.textContent = display.speedValue;
     speedUnit.textContent = display.speedUnit;
@@ -197,13 +188,24 @@
   }
 
   const timer = window.setInterval(update, 250);
-  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fitEvent) : null;
+  function onPanelResize() {
+    const height = panel.offsetHeight;
+    if (height > 0) {
+      host.style.setProperty('--drive-status-offset', `${height + 16}px`);
+    } else {
+      host.style.removeProperty('--drive-status-offset');
+    }
+    fitEvent();
+  }
+
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(onPanelResize) : null;
   observer?.observe(panel);
   document.addEventListener('visibilitychange', update);
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;
     window.clearInterval(timer);
     observer?.disconnect();
+    host.style.removeProperty('--drive-status-offset');
     document.removeEventListener('visibilitychange', update);
   }, { once: true });
   update();
