@@ -29,11 +29,13 @@
       && traffic.sectionId && traffic.nextSectionId && traffic.sectionId !== traffic.nextSectionId;
     const events = Array.isArray(traffic.events) ? traffic.events : [];
     const descriptions = [];
+    let hasAheadEvent = false;
     for (const event of events) {
       const description = String(event.description || '');
       if (!description) continue;
       const text = `${event.isCurrentSection ? '目前路段' : '前方'}：${description}`;
       descriptions.push(text);
+      hasAheadEvent ||= !event.isCurrentSection;
     }
     const lanes = Array.isArray(traffic.laneSpeeds)
       ? traffic.laneSpeeds.filter(lane => lane.speed != null) : [];
@@ -47,6 +49,7 @@
       speedUnit: traffic.speedUnit,
       speedStatus: congestion,
       event: descriptions.join(' ／ '),
+      hasAheadEvent,
       speedDrop: hasSpeedDrop ? `前方車流驟降 ${traffic.displayCurrentSpeed} → ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '',
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
@@ -86,7 +89,7 @@
   const eventText = document.createElement('span');
   eventLine.appendChild(eventText);
   const dropLine = document.createElement('div');
-  dropLine.className = 'traffic-hud-speed-drop';
+  dropLine.className = 'traffic-hud-warning';
   const lanePanel = document.createElement('div');
   lanePanel.className = 'traffic-hud-lanes';
   const laneHeader = document.createElement('div');
@@ -117,7 +120,9 @@
       eventText.classList.remove('traffic-hud-scroll');
       return;
     }
-    const { overflow, duration } = getScrollMetrics(eventText.scrollWidth, eventLine.clientWidth);
+    const style = getComputedStyle(eventLine);
+    const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const { overflow, duration } = getScrollMetrics(eventText.scrollWidth, eventLine.clientWidth - padding);
     eventText.style.setProperty('--traffic-scroll', `${-overflow}px`);
     eventText.style.setProperty('--traffic-duration', `${duration}s`);
     eventText.classList.toggle('traffic-hud-scroll', overflow > 1);
@@ -181,6 +186,7 @@
       return;
     }
     eventLine.hidden = false;
+    eventLine.classList.toggle('traffic-hud-warning', display.hasAheadEvent);
     if (eventText.textContent !== display.event) {
       eventText.classList.remove('traffic-hud-scroll');
       eventText.textContent = display.event;

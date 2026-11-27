@@ -140,6 +140,7 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'web/dist/js/traffic-hud.js'), 'utf8'), context);
   const panel = host.children[0]; const eventLine = panel.children[1]; const text = eventLine.children[0];
   assert.equal(text.classList.contains('traffic-hud-scroll'), true);
+  assert.equal(eventLine.classList.contains('traffic-hud-warning'), true);
   let offset;
   panel.style.setProperty = (key, value) => { if (key === '--traffic-hud-top') offset = value; };
   panel.style.removeProperty = key => { if (key === '--traffic-hud-top') offset = undefined; };
@@ -152,6 +153,7 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
   tick(); assert.equal(text.reflows, initialReflows);
   sm.tdx.events = [{ description: '施工，請注意', isCurrentSection: true }];
   tick(); assert.equal(text.textContent, '目前路段：施工，請注意');
+  assert.equal(eventLine.classList.contains('traffic-hud-warning'), false);
   assert.equal(text.reflows, initialReflows + 1);
   sm.tdx.events = []; tick();
   assert.equal(eventLine.hidden, true);

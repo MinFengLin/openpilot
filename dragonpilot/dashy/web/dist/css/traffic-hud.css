@@ -39,7 +39,7 @@
   from { transform: translateX(0); }
   to { transform: translateX(var(--traffic-scroll)); }
 }
-.traffic-hud-speed-drop {
+.traffic-hud-warning {
   margin-block: 4px;
   padding: 2px 6px;
   border-inline-start: 2px solid #ffda91;
