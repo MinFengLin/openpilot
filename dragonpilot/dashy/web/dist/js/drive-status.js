@@ -24,7 +24,7 @@
   }
   window.DashyDriveStatus = { getDisplay };
   if (typeof document === 'undefined') return;
-  const host = document.getElementById('hud-page-content');
+  const host = document.getElementById('hud-left-stack') || document.getElementById('hud-page-content');
   if (!host) return;
   const panel = document.createElement('div');
   panel.id = 'drive-status'; panel.hidden = true;

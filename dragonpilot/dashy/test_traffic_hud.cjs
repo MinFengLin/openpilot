@@ -127,14 +127,9 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
   const host = new Element(); const page = new Element();
   const sm = state(); sm.recv_time.tdx = Date.now() / 1000;
   let tick;
-  let resize;
   const context = {
-    ResizeObserver: class {
-      constructor(callback) { resize = callback; }
-      observe() {}
-    },
     window: { sm, setInterval: callback => { tick = callback; }, addEventListener() {} },
-    document: { hidden: false, getElementById: id => ({ 'hud-page': page, 'hud-page-content': host })[id],
+    document: { hidden: false, getElementById: id => ({ 'hud-page': page, 'hud-left-stack': host })[id],
       createElement: () => new Element(), addEventListener() {} },
     getComputedStyle: () => ({ visibility: 'visible' }),
   };
@@ -142,18 +137,6 @@ test('DOM clears cancelled events and restarts only when the event changes', () 
   const panel = host.children[0]; const eventLine = panel.children[1]; const text = eventLine.children[0];
   assert.equal(text.classList.contains('traffic-hud-scroll'), true);
   assert.equal(eventLine.classList.contains('traffic-hud-warning'), true);
-  let offset;
-  host.style.setProperty = (key, value) => { if (key === '--drive-status-offset') offset = value; };
-  host.style.removeProperty = key => { if (key === '--drive-status-offset') offset = undefined; };
-  panel.offsetHeight = 120;
-  resize();
-  assert.equal(offset, '136px');
-  panel.offsetHeight = 160;
-  resize();
-  assert.equal(offset, '176px');
-  panel.offsetHeight = 0;
-  resize();
-  assert.equal(offset, undefined);
   const initialReflows = text.reflows;
   tick(); assert.equal(text.reflows, initialReflows);
   sm.tdx.events = [{ description: '施工，請注意', isCurrentSection: true }];

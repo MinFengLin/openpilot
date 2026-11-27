@@ -9,9 +9,9 @@
     <title>Dashy by dragonpilot</title>
     <link rel="icon" href="/icons/icon-192x192.png">
     <link rel="stylesheet" href="/css/styles.css">
-    <link rel="stylesheet" href="/css/traffic-hud.css">
+    <link rel="stylesheet" href="/css/traffic-hud.css?v=2">
     <link rel="stylesheet" href="/css/road-info-hud.css">
-    <link rel="stylesheet" href="/css/drive-status.css">
+    <link rel="stylesheet" href="/css/drive-status.css?v=2">
 </head>
 <body>
 
@@ -27,6 +27,7 @@
         <!-- HUD Page (full-screen, default when enabled) -->
         <div id="hud-page" class="hud-page">
             <div id="hud-page-content" class="relative w-full h-full">
+                <div id="hud-left-stack"></div>
                 <!-- Video element created dynamically by theme if needed -->
                 <canvas id="uiCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
             </div>
@@ -38,8 +39,8 @@
     <script src="/js/tdx-settings.js"></script>
     <script src="/js/offline-map-settings.js"></script>
     <script src="/js/app.js"></script>
-    <script src="/js/traffic-hud.js"></script>
+    <script src="/js/traffic-hud.js?v=2"></script>
     <script src="/js/road-info-hud.js"></script>
-    <script src="/js/drive-status.js"></script>
+    <script src="/js/drive-status.js?v=2"></script>
 </body>
 </html>

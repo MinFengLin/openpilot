@@ -1,6 +1,6 @@
 #drive-status {
   position: absolute;
-  top: calc(max(12px, env(safe-area-inset-top)) + var(--drive-status-offset, 0px));
+  top: max(12px, env(safe-area-inset-top));
   left: max(12px, env(safe-area-inset-left));
   width: clamp(136px, 15vw, 176px);
   max-width: 42%;

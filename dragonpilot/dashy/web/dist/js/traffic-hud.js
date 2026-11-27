@@ -70,7 +70,7 @@
   window.DashyTraffic = { getDisplay, getScrollMetrics };
   if (typeof document === 'undefined') return;
 
-  const host = document.getElementById('hud-page-content');
+  const host = document.getElementById('hud-left-stack') || document.getElementById('hud-page-content');
   if (!host) return;
   const panel = document.createElement('div');
   panel.id = 'traffic-hud';
@@ -188,24 +188,13 @@
   }
 
   const timer = window.setInterval(update, 250);
-  function onPanelResize() {
-    const height = panel.offsetHeight;
-    if (height > 0) {
-      host.style.setProperty('--drive-status-offset', `${height + 16}px`);
-    } else {
-      host.style.removeProperty('--drive-status-offset');
-    }
-    fitEvent();
-  }
-
-  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(onPanelResize) : null;
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fitEvent) : null;
   observer?.observe(panel);
   document.addEventListener('visibilitychange', update);
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;
     window.clearInterval(timer);
     observer?.disconnect();
-    host.style.removeProperty('--drive-status-offset');
     document.removeEventListener('visibilitychange', update);
   }, { once: true });
   update();
