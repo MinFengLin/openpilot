@@ -51,6 +51,7 @@ from openpilot.system.hardware import PC, HARDWARE
 from openpilot.system.ui.lib.multilang import multilang as base_multilang
 from dragonpilot.settings import SETTINGS, tr
 from dragonpilot.dashy.road_info import road_info_loop
+from dragonpilot.mapd import region_key, regions
 from dragonpilot.selfdrive.controls.lib.tdx import tdx_auth
 
 try:
@@ -570,6 +571,88 @@ async def verify_tdx_credentials(client_id, client_secret):
             tdx_auth.parse_token(await response.json())
 
 
+async def map_update_api(request):
+    cache: AppCache = request.app['cache']
+    params = cache.params
+    payload = {}
+    if request.method == 'POST':
+        try:
+            origin = urlsplit(request.headers.get('Origin', ''))
+            if (origin.scheme not in ('http', 'https') or origin.netloc != request.host
+                    or origin.path or origin.query or origin.fragment or request.content_type != 'application/json'):
+                return web.json_response({'error': 'forbidden'}, status=403)
+            if request.content_length is not None and request.content_length > 1024:
+                return web.json_response({'error': 'invalid_input'}, status=400)
+            payload = await request.json()
+        except (ValueError, web.HTTPException):
+            return web.json_response({'error': 'invalid_input'}, status=400)
+        if not isinstance(payload, dict):
+            return web.json_response({'error': 'invalid_input'}, status=400)
+
+    country = params.get('dp_mapd_country') or 'TW'
+    state = params.get('dp_mapd_state') or ''
+    offroad = cache.get_bool_safe('IsOffroad', False)
+    queued = params.get('dp_mapd_request') or ''
+    busy = params.get_bool('dp_mapd_busy') or bool(queued)
+    installed = params.get('dp_mapd_installed_regions') or {}
+    result = params.get('dp_mapd_update') or {}
+
+    def reply(code=200, error=None):
+        selection = region_key(country, state)
+        status = result.get('status') if result.get('region') == selection else None
+        if selection not in installed:
+            status = 'not_installed'
+        elif queued == 'check_update':
+            status = 'checking'
+        return web.json_response({
+            'key': selection, 'country': country, 'state': state,
+            'countries': regions(), 'states': regions(True),
+            'installed': selection in installed,
+            'downloadStatus': params.get('dp_mapd_status') or '尚未下載圖資',
+            'status': status or 'unchecked', 'offroad': offroad, 'busy': busy,
+            'enabled': params.get_bool('dp_dashy_road_info'), 'error': error,
+        }, status=code, headers={'Cache-Control': 'no-store'})
+
+    if request.method == 'GET':
+        return reply()
+    if not offroad or busy:
+        return reply(409, 'unavailable')
+
+    action = payload.get('action')
+    if action == 'country':
+        value = payload.get('value')
+        if not isinstance(value, str) or value not in regions():
+            return reply(400, 'invalid_input')
+        if value != country:
+            params.put('dp_mapd_state', '', block=True)
+            params.put('dp_mapd_country', value, block=True)
+            country, state = value, ''
+    elif action == 'state':
+        value = payload.get('value')
+        if country != 'US' or not isinstance(value, str) or (value and value not in regions(True)):
+            return reply(400, 'invalid_input')
+        params.put('dp_mapd_state', value, block=True)
+        state = value
+    elif action == 'enabled':
+        value = payload.get('value')
+        if not isinstance(value, bool):
+            return reply(400, 'invalid_input')
+        params.put_bool('dp_dashy_road_info', value, block=True)
+        cache.invalidate()
+    elif action in ('download', 'check_update', 'delete'):
+        selection = region_key(country, state)
+        if action != 'delete' and payload.get('key') != selection:
+            return reply(409, 'region_changed')
+        if action == 'check_update' and selection not in installed:
+            return reply(409, 'unavailable')
+        params.put('dp_mapd_request', action, block=True)
+        queued, busy = action, True
+        return reply(202)
+    else:
+        return reply(400, 'invalid_input')
+    return reply()
+
+
 async def tdx_credentials_api(request):
     """Write or test credentials on-device. Only status is returned."""
     def reply(status, code):
@@ -907,6 +990,8 @@ def setup_aiohttp_app(host: str, port: int, debug: bool):
     app.router.add_get("/api/settings", get_settings_config_api)
     app.router.add_get("/api/settings/params/{param_name}", get_param_api)
     app.router.add_post("/api/settings/params/{param_name}", save_param_api)
+    app.router.add_get("/api/settings/map-update", map_update_api)
+    app.router.add_post("/api/settings/map-update", map_update_api)
     app.router.add_post("/api/settings/tdx/{operation:save|check}", tdx_credentials_api)
     app.router.add_get("/api/models", get_model_list_api)
     app.router.add_post("/api/models/select", save_model_selection_api)

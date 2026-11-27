@@ -185,6 +185,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"dp_mapd_state", {PERSISTENT, STRING}},
     {"dp_mapd_status", {PERSISTENT, STRING, "尚未下載圖資"}},
     {"dp_mapd_installed_regions", {PERSISTENT, JSON, "{}"}},
+    {"dp_mapd_update", {CLEAR_ON_MANAGER_START, JSON}},
     {"dp_mapd_request", {CLEAR_ON_MANAGER_START, STRING}},
     {"dp_mapd_active", {CLEAR_ON_MANAGER_START, BOOL, "0"}},
     {"dp_mapd_busy", {CLEAR_ON_MANAGER_START, BOOL, "0"}},

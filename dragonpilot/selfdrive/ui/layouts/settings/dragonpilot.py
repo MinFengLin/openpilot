@@ -26,7 +26,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
-from dragonpilot.mapd import regions
+from dragonpilot.mapd import region_key, regions
 from dragonpilot.selfdrive.controls.lib.tdx.tdx_auth import CREDENTIALS_PARAM, read_credential_fields
 from openpilot.system.hardware import HARDWARE
 from dragonpilot.settings import SETTINGS, extract_depends_on_refs
@@ -292,6 +292,30 @@ class DragonpilotLayout(Widget):
         callback=lambda: request('download'), enabled=available)
     self._toggles['offline_status'] = simple_item(
         lambda: tr('圖資狀態：') + (ui_state.params.get('dp_mapd_status') or tr('尚未下載圖資')))
+    def selected_map():
+      return region_key(ui_state.params.get('dp_mapd_country') or 'TW', ui_state.params.get('dp_mapd_state') or '')
+    def map_installed():
+      return selected_map() in (ui_state.params.get('dp_mapd_installed_regions') or {})
+    def update_status():
+      if not map_installed():
+        return tr('所選地區尚未下載')
+      result = ui_state.params.get('dp_mapd_update') or {}
+      if result.get('region') == selected_map():
+        message = {
+          'checking': tr('正在檢查…'),
+          'available': tr('有新圖資可更新'),
+          'current': tr('已是最新圖資'),
+          'unknown': tr('無法確認是否有新版，請稍後再試'),
+        }.get(result.get('status'))
+        if message:
+          return message
+      return tr('尚未檢查更新')
+    def check_for_update():
+      if available() and map_installed():
+        ui_state.params.put('dp_mapd_request', 'check_update', block=True)
+    self._toggles['offline_update'] = button_item(
+        tr('圖資更新'), tr('檢查'), update_status, callback=check_for_update,
+        enabled=lambda: available() and map_installed())
     self._toggles['offline_delete'] = button_item(tr('刪除所有離線圖資'), tr('刪除'),
         callback=lambda: request('delete'), enabled=available)
 

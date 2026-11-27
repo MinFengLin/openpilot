@@ -8,8 +8,10 @@ import shutil
 import signal
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from dragonpilot.mapd import BINARY, ROOT, SHA256, URL, download_locations, region_key, progress_complete
+from dragonpilot.mapd.updates import check_update
 
 
 def install(offroad):
@@ -66,9 +68,12 @@ def main():
     child = None
     pending = None
     params.put_bool('dp_mapd_busy', False, block=True)
+    params.remove('dp_mapd_update')
     started_at = 0.0
     active_region = None
     shutdown = False
+    update_executor = ThreadPoolExecutor(max_workers=1)
+    update_check = None
 
     def on_signal(*_):
         nonlocal shutdown
@@ -91,14 +96,34 @@ def main():
                 state = params.get('dp_mapd_state') or ''
                 selection = region_key(country, state)
                 installed = params.get('dp_mapd_installed_regions') or {}
+                if update_check is not None and update_check.done():
+                    try:
+                        result = update_check.result()
+                    except Exception:
+                        cloudlog.exception('offline mapd: update check failed')
+                        result = 'unknown'
+                    if offroad() and selection == checked_region:
+                        params.put('dp_mapd_update', {'region': checked_region, 'status': result}, block=True)
+                    else:
+                        params.remove('dp_mapd_update')
+                    update_check = None
                 request = params.get('dp_mapd_request') or ''
                 if request:
+                    if offroad() and not pending and update_check is None:
+                        params.put_bool('dp_mapd_busy', True, block=True)
                     params.remove('dp_mapd_request')
                     if not offroad():
                         status('請先停車並進入 Offroad')
+                    elif update_check is not None:
+                        cloudlog.debug('offline mapd: request ignored during update check')
                     elif pending:
                         status('正在下載，請稍候')
+                    elif request == 'check_update' and selection in installed:
+                        checked_region = selection
+                        params.put('dp_mapd_update', {'region': selection, 'status': 'checking'}, block=True)
+                        update_check = update_executor.submit(check_update, selection, installed[selection], offroad)
                     elif request == 'delete':
+                        params.remove('dp_mapd_update')
                         stop(child)
                         child = None
                         mem.put_bool('dp_mapd_active', False, block=True)
@@ -108,9 +133,10 @@ def main():
                         if target.exists():
                             shutil.rmtree(target)
                         params.put('dp_mapd_installed_regions', {}, block=True)
+                        active_region = selection
                         status('已刪除下載圖資')
                     elif request == 'download':
-                        params.put_bool('dp_mapd_busy', True, block=True)
+                        params.remove('dp_mapd_update')
                         locations = download_locations(country, state)
                         if platform.system() != 'Linux' or platform.machine() != 'aarch64':
                             raise RuntimeError('SP mapd 二進位僅支援 Linux ARM64 車機')
@@ -195,9 +221,7 @@ def main():
                                                              'bearing': gps.bearingDeg}), block=True)
                     else:
                         mem.put('LastGPSPosition', '{}', block=True)
-                if request == 'delete':
-                    active_region = selection
-                params.put_bool('dp_mapd_busy', bool(pending))
+                params.put_bool('dp_mapd_busy', bool(pending or update_check is not None))
             except Exception as error:
                 stop(child)
                 child = None
@@ -208,6 +232,8 @@ def main():
                 cloudlog.warning(f'offline mapd: {type(error).__name__}')
             time.sleep(1)
     finally:
+        shutdown = True
+        update_executor.shutdown(wait=False, cancel_futures=True)
         stop(child)
         mem.put_bool('dp_mapd_active', False, block=True)
         params.put_bool('dp_mapd_busy', False, block=True)

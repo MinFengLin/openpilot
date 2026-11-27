@@ -13,6 +13,7 @@ ITEMS = [
   {"key": "dp_mapd_state", "flags": "PERSISTENT", "param_type": "STRING", "default": ""},
   {"key": "dp_mapd_status", "flags": "PERSISTENT", "param_type": "STRING", "default": "尚未下載圖資"},
   {"key": "dp_mapd_installed_regions", "flags": "PERSISTENT", "param_type": "JSON", "default": "{}"},
+  {"key": "dp_mapd_update", "flags": "CLEAR_ON_MANAGER_START", "param_type": "JSON"},
   {"key": "dp_mapd_request", "flags": "CLEAR_ON_MANAGER_START", "param_type": "STRING", "default": ""},
   {"key": "dp_mapd_active", "flags": "CLEAR_ON_MANAGER_START", "param_type": "BOOL", "default": "0"},
   {"key": "dp_mapd_busy", "flags": "CLEAR_ON_MANAGER_START", "param_type": "BOOL", "default": "0"},
