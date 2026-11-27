@@ -92,14 +92,14 @@ def _rows(record, group, item):
   return record.findall(f'{group}/{item}')
 
 
-def parse_live(root, now):
+def parse_live(root, now, max_age=MAX_AGE_S):
   readings = {}
   for entry in _rows(root, 'VDLives', 'VDLive'):
     station_id = _text(entry, 'VDID')
     if not station_id or _text(entry, 'Status') != '0':
       continue
     timestamp = _text(entry, 'DataCollectTime')
-    if not is_fresh_timestamp(timestamp, now):
+    if not is_fresh_timestamp(timestamp, now, max_age):
       continue
     collected = datetime.fromisoformat(timestamp).timestamp()
     for flow in _rows(entry, 'LinkFlows', 'LinkFlow'):
@@ -131,23 +131,41 @@ def parse_live(root, now):
   return readings
 
 
-def select_ahead(sections, routes, readings, section_id, fraction, now):
+def select_lane_station(sections, routes, readings, section_id, fraction, now):
+  """Prefer a fresh station ahead; otherwise use the nearest station behind."""
   section = sections.get(section_id)
   if section is None:
     return None
   route, start, end = section
   mile = start + fraction * (end - start)
   direction = 1 if end > start else -1
-  nearest = None
-  limit = MAX_DISTANCE_M
+  nearest_ahead = nearest_passed = None
+  ahead_limit = MAX_DISTANCE_M
+  passed_limit = math.inf
   for station_mile, station_id, link_id in routes.get(route, ()):
     distance = (station_mile - mile) * direction
-    if not 0 < distance <= limit:
+    if not -passed_limit <= distance <= ahead_limit:
       continue
     reading = readings.get((station_id, link_id))
     if reading is None or not 0 <= now - reading[0] <= MAX_AGE_S:
       continue
     collected, lanes = reading
-    nearest = (round(distance), int(collected), lanes)
-    limit = distance
-  return nearest
+    if distance >= 0:
+      nearest_ahead = (round(distance), int(collected), lanes)
+      ahead_limit = distance
+    else:
+      nearest_passed = (-max(1, round(-distance)), int(collected), lanes)
+      passed_limit = -distance
+  return nearest_ahead if nearest_ahead is not None else nearest_passed
+
+
+def hold_lane_reading(previous, reading, section_key, now, wall_time, hold_seconds=3, max_age=MAX_AGE_S):
+  """Keep a recent, still fresh measurement through a short loss on the same section."""
+  if reading is not None:
+    return section_key, reading, now
+  if previous is not None:
+    section, held, received = previous
+    if (section == section_key and 0 <= now - received <= hold_seconds
+        and 0 <= wall_time - held[1] <= max_age):
+      return previous
+  return None

@@ -45,21 +45,24 @@ def read_credentials(params):
   return None
 
 
-def request_token(client_id, client_secret, timeout):
-  response = requests.post(TOKEN_URL, data={
-    'grant_type': 'client_credentials',
-    'client_id': client_id,
-    'client_secret': client_secret,
-  }, timeout=timeout, allow_redirects=False)
-  check_rate_limit(response)
-  if response.status_code != 200:
-    raise ValueError(f'TDX token request returned HTTP {response.status_code}')
-  payload = response.json()
+def token_form(client_id, client_secret):
+  return {'grant_type': 'client_credentials', 'client_id': client_id, 'client_secret': client_secret}
+
+
+def parse_token(payload):
   token = payload.get('access_token') if isinstance(payload, dict) else None
   if not isinstance(token, str) or not token or any(char.isspace() for char in token):
     raise ValueError('TDX token response has no usable access token')
   expires_in = payload.get('expires_in', 0)
   return token, expires_in if isinstance(expires_in, int) and expires_in > 0 else 0
+
+
+def request_token(client_id, client_secret, timeout):
+  response = requests.post(TOKEN_URL, data=token_form(client_id, client_secret), timeout=timeout, allow_redirects=False)
+  check_rate_limit(response)
+  if response.status_code != 200:
+    raise ValueError(f'TDX token request returned HTTP {response.status_code}')
+  return parse_token(response.json())
 
 
 def access_token(client_id, client_secret, timeout):

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes
+from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes, urban_roads
 
 
 class FakeSubMaster(dict):
@@ -55,7 +55,7 @@ class TestTdxExtraction(unittest.TestCase):
     def test_lane_speed_preserves_missing_samples_and_station_metadata(self):
         sm = FakeSubMaster()
         sm['tdx'].laneRoadLabel = '國一・汐五高架'
-        sm['tdx'].laneDistanceM = 1800
+        sm['tdx'].lanePassedDistanceM = 80000
         sm['tdx'].laneCollectedAt = 1795618320
         sm['tdx'].laneSpeeds = [
             SimpleNamespace(laneId=0, speed=100), SimpleNamespace(laneId=1, speed=-1),
@@ -64,7 +64,8 @@ class TestTdxExtraction(unittest.TestCase):
         self.namespace['_is_metric'] = False
         result = self.extract(sm)
         self.assertEqual(result['laneRoadLabel'], '國一・汐五高架')
-        self.assertEqual(result['laneDistanceM'], 1800)
+        self.assertEqual(result['laneDistanceM'], 80000)
+        self.assertTrue(result['laneStationPassed'])
         self.assertEqual(result['laneCollectedAt'], 1795618320)
         self.assertEqual(result['laneSpeeds'], [
             {'laneId': 0, 'speed': '62'}, {'laneId': 1, 'speed': None}, {'laneId': 2, 'speed': '0'},
@@ -95,6 +96,42 @@ class TestFreewayLaneSelection(unittest.TestCase):
         self.assertEqual(freeway_lanes.route_label('000010'), '國一・平面')
         self.assertEqual(freeway_lanes.route_label('00001A'), '國一・汐五高架')
         self.assertEqual(freeway_lanes.route_label('00001B'), '')
+
+    def test_uses_nearest_passed_station_until_ahead_is_available(self):
+        road = ('road', 'N')
+        sections = {'section': (road, 3000, 2000)}
+        routes = {road: [(2800, 'passed', 'n'), (2100, 'ahead', 'n')],
+                  ('road', 'S'): [(2400, 'opposite', 's')]}
+        passed = (1000, ((0, 79),))
+        ahead = (1005, ((0, 65),))
+        speeds = {('passed', 'n'): passed, ('opposite', 's'): ahead}
+        lookup = freeway_lanes.select_lane_station
+        self.assertEqual(lookup(sections, routes, speeds, 'section', .5, 1030), (-300, *passed))
+        self.assertEqual(lookup(sections, routes, speeds, 'section', .8, 1030), (-600, *passed))
+        self.assertIsNone(lookup(sections, routes, speeds, 'section', .5, 1181))
+        speeds['ahead', 'n'] = ahead
+        self.assertEqual(lookup(sections, routes, speeds, 'section', .5, 1030), (400, *ahead))
+
+    def test_holds_lane_values_only_briefly_on_same_section(self):
+        reading = (250, 1000, ((0, 85), (1, 72)), '國一・平面')
+        key = (False, 'section')
+        stored = freeway_lanes.hold_lane_reading(None, reading, key, 10, 1010)
+        self.assertEqual(freeway_lanes.hold_lane_reading(stored, None, key, 12, 1012), stored)
+        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, key, 13.1, 1013))
+        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, (True, 'section'), 12, 1012))
+        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, key, 12, 1181))
+
+    def test_city_station_walks_directional_sections_and_prefers_ahead(self):
+        matcher = SimpleNamespace(sections={sid: {'total_length': 1000} for sid in ('a', 'b', 'c')},
+                                  topology_next={'a': 'b', 'b': 'c'})
+        stations = {'a': [(900, 'behind', 'a')], 'c': [(100, 'ahead', 'c')]}
+        previous = {'b': 'a', 'c': 'b'}
+        records = {('behind', 'a'): (1000, ((0, 60),))}
+        lookup = urban_roads.walk_stations
+        self.assertEqual(lookup(matcher, stations, previous, 'b', 300, records, 1100), (-800, 1000, ((0, 60),)))
+        records['ahead', 'c'] = (1000, ((0, 75),))
+        self.assertEqual(lookup(matcher, stations, previous, 'b', 300, records, 1100), (400, 1000, ((0, 75),)))
+        self.assertIsNone(lookup(matcher, stations, previous, 'b', 300, records, 1301))
 
     def test_expressway_index_excludes_regular_provincial_roads(self):
         root = freeway_lanes.read_xml(b"""<SectionList><Sections>
@@ -145,9 +182,9 @@ class TestFreewayLaneSelection(unittest.TestCase):
             ('ahead', 'north-link'), ('ramp', 'ramp-link'), ('behind', 'behind-link'),
             ('opposite', 'opposite-link'), ('elevated', 'elevated-link'),
         ], reading)
-        self.assertEqual(freeway_lanes.select_ahead(sections, routes, readings, 'north', 0.5, 1050),
+        self.assertEqual(freeway_lanes.select_lane_station(sections, routes, readings, 'north', 0.5, 1050),
                          (200, *reading))
-        self.assertIsNone(freeway_lanes.select_ahead(sections, routes, readings, 'north', 0.5, 1181))
+        self.assertIsNone(freeway_lanes.select_lane_station(sections, routes, readings, 'north', 0.5, 1181))
 
 
 if __name__ == '__main__':

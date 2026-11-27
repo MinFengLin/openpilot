@@ -103,10 +103,11 @@ struct Tdx @0xf98d843bfd7004a3 {
   congestion @4 :Congestion;    # 依 nextSpeed 分級
   events @5 :List(Event);       # 本週期要顯示的事件（目前/前方每 10 秒輪替，空 = 無事件）
 
-  laneSpeeds @6 :List(LaneSpeed); # 前方測站，依車道代碼排序
-  laneDistanceM @7 :UInt16;      # 依道路里程估算的前方距離
+  laneSpeeds @6 :List(LaneSpeed); # 測站資料，依車道代碼排序
+  laneDistanceM @7 :UInt16;      # 依道路里程估算的前方測站距離
   laneCollectedAt @8 :UInt64;    # 測站採集時間，Unix 秒
   laneRoadLabel @9 :Text;        # 路況對應的道路名稱
+  lanePassedDistanceM @10 :UInt32; # 已通過測站的距離，0 = 使用前方測站
 
   struct LaneSpeed {
     laneId @0 :UInt8;

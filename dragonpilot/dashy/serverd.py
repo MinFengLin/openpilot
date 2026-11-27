@@ -40,9 +40,9 @@ import logging
 import time
 from datetime import datetime
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from aiohttp import web
+from aiohttp import ClientError, ClientSession, ClientTimeout, web
 
 from cereal import messaging
 
@@ -51,6 +51,7 @@ from openpilot.system.hardware import PC, HARDWARE
 from openpilot.system.ui.lib.multilang import multilang as base_multilang
 from dragonpilot.settings import SETTINGS, tr
 from dragonpilot.dashy.road_info import road_info_loop
+from dragonpilot.selfdrive.controls.lib.tdx import tdx_auth
 
 try:
     from openpilot.system.version import get_build_metadata as _get_build_metadata
@@ -70,7 +71,7 @@ class MockParams:
     _store = {}
     def get(self, key, default=None): return self._store.get(key, default)
     def get_bool(self, key, default=False): return bool(self._store.get(key)) if key in self._store else default
-    def put(self, key, value): self._store[key] = value
+    def put(self, key, value, block=False): self._store[key] = value
     def put_bool(self, key, value): self._store[key] = value
     def remove(self, key): self._store.pop(key, None)
     def check_key(self, key): return True
@@ -556,6 +557,80 @@ async def get_param_api(request):
     return web.json_response({'key': param_name, 'value': value})
 
 
+async def verify_tdx_credentials(client_id, client_secret):
+    async with ClientSession(timeout=ClientTimeout(total=8)) as session:
+        async with session.post(tdx_auth.TOKEN_URL, data=tdx_auth.token_form(client_id, client_secret),
+                                allow_redirects=False) as response:
+            if response.status == 429:
+                raise tdx_auth.TdxRateLimited(response.headers.get('Retry-After'))
+            if response.status in (400, 401, 403):
+                raise ValueError('TDX rejected credentials')
+            if response.status != 200:
+                raise ClientError('Unexpected TDX response')
+            tdx_auth.parse_token(await response.json())
+
+
+async def tdx_credentials_api(request):
+    """Write or test credentials on-device. Only status is returned."""
+    def reply(status, code):
+        return web.json_response({'status': code}, status=status, headers={'Cache-Control': 'no-store'})
+
+    try:
+        origin = urlsplit(request.headers.get('Origin', ''))
+    except ValueError:
+        return reply(403, 'forbidden')
+    if (origin.scheme not in ('http', 'https') or origin.netloc != request.host
+            or origin.path or origin.query or origin.fragment or request.content_type != 'application/json'):
+        return reply(403, 'forbidden')
+    cache = request.app['cache']
+    if not cache.get_bool_safe('IsOffroad', False):
+        return reply(409, 'offroad_required')
+    if request.content_length is not None and request.content_length > 4096:
+        return reply(400, 'invalid_input')
+    try:
+        data = await request.json()
+    except (ValueError, web.HTTPException):
+        return reply(400, 'invalid_input')
+    if not isinstance(data, dict):
+        return reply(400, 'invalid_input')
+    operation = request.match_info['operation']
+    values = (data.get('clientId', ''), data.get('clientSecret', ''))
+    if any(not isinstance(value, str) or len(value) > 255 for value in values):
+        return reply(400, 'invalid_input')
+    credentials = tuple(value.strip() for value in values)
+
+    if operation == 'save':
+        if not all(credentials):
+            return reply(400, 'invalid_input')
+        client_id, client_secret = credentials
+        try:
+            cache.params.put(tdx_auth.CREDENTIALS_PARAM, {'client_id': client_id, 'client_secret': client_secret}, block=True)
+        except Exception:
+            return reply(500, 'save_failed')
+        return reply(200, 'saved')
+
+    if not any(credentials):
+        credentials = tdx_auth.read_credentials(cache.params)
+    if not credentials or not all(credentials):
+        return reply(400, 'invalid_input')
+    state = request.app['tdx_check_state']
+    if state['running'] or time.monotonic() < state['retry_at']:
+        return reply(429, 'rate_limited')
+    state['running'] = True
+    try:
+        await verify_tdx_credentials(*credentials)
+    except tdx_auth.TdxRateLimited as e:
+        state['retry_at'] = time.monotonic() + e.retry_seconds
+        return reply(429, 'rate_limited')
+    except (ClientError, TimeoutError, json.JSONDecodeError):
+        return reply(502, 'upstream_failed')
+    except ValueError:
+        return reply(422, 'rejected')
+    finally:
+        state['running'] = False
+    return reply(200, 'verified')
+
+
 # --- Action endpoints ---
 # Named side-effectful operations declared by settings items via the
 # `action` field (text_input_item / action_item). Each handler receives
@@ -822,6 +897,7 @@ def setup_aiohttp_app(host: str, port: int, debug: bool):
     )
 
     app = web.Application(middlewares=[no_cache_middleware])
+    app['tdx_check_state'] = {'running': False, 'retry_at': 0.0}
 
     # API routes
     app.router.add_get("/api/init", init_api)
@@ -831,6 +907,7 @@ def setup_aiohttp_app(host: str, port: int, debug: bool):
     app.router.add_get("/api/settings", get_settings_config_api)
     app.router.add_get("/api/settings/params/{param_name}", get_param_api)
     app.router.add_post("/api/settings/params/{param_name}", save_param_api)
+    app.router.add_post("/api/settings/tdx/{operation:save|check}", tdx_credentials_api)
     app.router.add_get("/api/models", get_model_list_api)
     app.router.add_post("/api/models/select", save_model_selection_api)
     app.router.add_post("/api/action/{name}", run_action_api)

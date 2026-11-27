@@ -62,6 +62,7 @@
   gap: 0 10px;
   font-size: 0.8em;
 }
+.traffic-hud-lane-age { color: #c2d0d6; font-size: 0.8em; }
 .traffic-hud-lane-list {
   display: flex;
   flex-wrap: wrap;

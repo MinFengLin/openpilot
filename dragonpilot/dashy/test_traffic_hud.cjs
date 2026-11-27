@@ -49,14 +49,29 @@ test('lane-only data shows distance and omits missing lanes', () => {
   Object.assign(sm.tdx, { nextSpeed: -1, events: [], laneDistanceM: 1800, laneCollectedAt: 1, laneRoadLabel: '國一・汐五高架',
     laneSpeeds: [{ laneId: 0, speed: '92' }, { laneId: 1, speed: null }, { laneId: 2, speed: '0' }] });
   const display = getDisplay(sm, now);
-  assert.equal(display.laneCaption, '車道（左 → 右） · km/h');
+  assert.equal(display.laneCaption, '車速：2 道（左 → 右） · km/h');
   assert.equal(display.distance, '前方 1.8 km');
+  Object.assign(sm.tdx, {laneStationPassed: true, laneDistanceM: 300});
+  assert.equal(getDisplay(sm, now).distance, '已通過測站 300 m');
+  sm.tdx.laneDistanceM = 80000;
+  assert.equal(getDisplay(sm, now).distance, '已通過測站 80.0 km');
   assert.equal(display.laneRoadLabel, '國一・汐五高架');
   assert.deepEqual(display.lanes.map(lane => [lane.laneId, lane.speed]), [[0, '92'], [2, '0']]);
   assert.equal(getDisplay(sm, now + 4001), null);
   sm.tdx.laneSpeeds[0].speed = null;
   sm.tdx.laneSpeeds[2].speed = null;
   assert.equal(getDisplay(sm, now), null);
+});
+
+test('lane sample age advances and resets when the same station publishes again', () => {
+  const sm = state();
+  Object.assign(sm.tdx, { laneDistanceM: 1200, laneStationPassed: true,
+    laneCollectedAt: 930, laneSpeeds: [{ laneId: 0, speed: '20' }] });
+  sm.recv_time.tdx = 1000;
+  assert.equal(getDisplay(sm, 1000000).laneAge, '採集於 1 分 10 秒前');
+  assert.equal(getDisplay(sm, 1003000).laneAge, '採集於 1 分 13 秒前');
+  sm.tdx.laneCollectedAt = 1001;
+  assert.equal(getDisplay(sm, 1003000).laneAge, '採集於 2 秒前');
 });
 
 test('speed drop needs a distinct ahead section and a substantial drop in raw km/h', () => {

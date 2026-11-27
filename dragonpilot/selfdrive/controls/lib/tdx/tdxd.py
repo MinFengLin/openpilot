@@ -26,7 +26,7 @@ import urllib3
 
 import cereal.messaging as messaging
 from cereal import custom
-from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes, tdx_auth, tdx_live
+from dragonpilot.selfdrive.controls.lib.tdx import expressway, freeway_lanes, tdx_auth, tdx_live, urban_roads
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware import PC
@@ -62,6 +62,8 @@ VD_METADATA_RETRY_S = 600
 VD_MATCH_DISTANCE_M = 35
 TDX_ROAD_MATCH_MAX_AGE_S = 3.0
 TDX_ROAD_MATCH_COUNT = 2
+STOPPED_SPEED_MPS = 1.0
+STOPPED_FIX_TOLERANCE_M = 25.0
 
 TOPOLOGY_MAX_GAP_M = 100.0       # 前一段終點與下一段起點的最大距離（原 50m，大量相鄰路段接不上）
 TOPOLOGY_MAX_ANGLE_DEG = 45.0    # 方位差上限，排除對向車道
@@ -633,7 +635,7 @@ class FreewayLaneClient:
       return None
     fraction = 1 - matcher.distance_to_section_end(section_id, lat, lon) / length
     now = time.time()  # noqa: TID251 - upstream timestamps use Unix time
-    reading = freeway_lanes.select_ahead(sections, stations, readings, section_id, fraction, now)
+    reading = freeway_lanes.select_lane_station(sections, stations, readings, section_id, fraction, now)
     if reading is None:
       return None
     route, _, _ = sections[section_id]
@@ -712,13 +714,14 @@ class NetworkWorker:
     self.lanes = FreewayLaneClient()
     self.expressway_client = FreewayDataClient(provincial=True)
     self.expressway_lanes = ExpresswayLaneClient()
-    self.active_expressway = False
+    self.taipei = urban_roads.TaipeiTraffic(LocalMapMatcher)
+    self.active_road = 'freeway'
     self._live_road_match = None
     self._params = Params()
     self._tdx_live = tdx_live.TdxLiveClient()
     self._shapes_attempts = 0
     self._next_shapes_attempt = 0.0
-    self._last_public_live_update = {'freeway': -math.inf, 'expressway': -math.inf}
+    self._last_public_live_update = dict.fromkeys(('freeway', 'expressway', 'taipei'), -math.inf)
     self._last_tdx_live_update = -math.inf
     self._thread = threading.Thread(target=self._run, name="tdxd_net", daemon=True)
 
@@ -790,6 +793,9 @@ class NetworkWorker:
         cloudlog.warning(f"tdxd: TDX authentication failed ({type(e).__name__})")
       return source
 
+    if road == 'taipei':
+      self.taipei.store(FreewayDataClient._refresh_live, get_tdx)
+      return
     if road == 'expressway':
       matcher, _ = self.expressway_lanes.map_data
       client, lane_client = self.expressway_client, self.expressway_lanes
@@ -814,6 +820,16 @@ class NetworkWorker:
       time.sleep(1)
 
 
+def stabilize_stopped_fix(previous, lat, lon, bearing, speed, valid_fix):
+  # GPS course can change arbitrarily while stationary. Use the last matched
+  # heading only while a good fix still places the vehicle at that location.
+  if previous is not None and valid_fix and 0 <= speed <= STOPPED_SPEED_MPS:
+    prev_lat, prev_lon, prev_bearing = previous
+    if _get_distance_meters(lon, lat, prev_lon, prev_lat) <= STOPPED_FIX_TOLERANCE_M:
+      return lat, lon, prev_bearing, True
+  return lat, lon, bearing, False
+
+
 # ==========================================
 # 4. 主循環
 # ==========================================
@@ -833,6 +849,8 @@ def main():
   stable_current_section = None
   current_section_miss_count = 0
   last_log_state = None
+  lane_display = None
+  last_matched_fix = None
 
   while True:
     sm.update()
@@ -849,6 +867,7 @@ def main():
         lat = live_gps.latitude
         lon = live_gps.longitude
         bearing = live_gps.bearingDeg
+        gps_speed = live_gps.speed
         is_gps_ready = True
         gps_source = 'liveGPS'
         lane_gps_ok = 0 < live_gps.horizontalAccuracy <= VD_MATCH_DISTANCE_M
@@ -860,35 +879,42 @@ def main():
         lat = raw_gps.latitude
         lon = raw_gps.longitude
         bearing = raw_gps.bearingDeg
+        gps_speed = raw_gps.speed
         is_gps_ready = True
         gps_source = 'gpsLocationExternal'
         lane_gps_ok = raw_gps.hasFix and 0 < acc <= VD_MATCH_DISTANCE_M
 
-    if (not is_gps_ready or not all(map(math.isfinite, (lat, lon, bearing)))
+    if (not is_gps_ready or not all(map(math.isfinite, (lat, lon)))
         or current_time - last_calc_time < CALC_INTERVAL_S):
+      continue
+    lat, lon, bearing, stopped_fix = stabilize_stopped_fix(last_matched_fix, lat, lon, bearing, gps_speed, lane_gps_ok)
+    if not math.isfinite(bearing):
       continue
     last_calc_time = current_time
 
-    matcher = worker.matcher
     provincial_matcher, _ = worker.expressway_lanes.map_data
-    freeway_id, freeway_dist = matcher.match_current_section(lat, lon, 300, bearing)
-    expressway_id, expressway_dist = provincial_matcher.match_current_section(lat, lon, VD_MATCH_DISTANCE_M, bearing)
-    use_expressway = expressway_dist < freeway_dist
-    if use_expressway != worker.active_expressway:
+    choices = {
+      'freeway': (worker.matcher, worker.client, worker.lanes, 300),
+      'expressway': (provincial_matcher, worker.expressway_client, worker.expressway_lanes, VD_MATCH_DISTANCE_M),
+      'taipei': (worker.taipei.matcher, worker.taipei, worker.taipei, VD_MATCH_DISTANCE_M),
+    }
+    matches = {road: item[0].match_current_section(lat, lon, item[3], bearing) for road, item in choices.items()}
+    road = min(matches, key=lambda name: matches[name][1])
+    raw_current_section, distance = matches[road]
+    matcher, client, lane_client, _ = choices[road]
+    city_route_changed = (road == 'taipei' and raw_current_section is not None and stable_current_section in matcher.sections
+                          and matcher.sections[raw_current_section]['route'] != matcher.sections[stable_current_section]['route'])
+    if road != worker.active_road or city_route_changed:
       stable_current_section = stable_ahead_section = None
       current_section_miss_count = 0
       ahead_section_history.clear()
-      worker.active_expressway = use_expressway
-    live_road = None
-    if lane_gps_ok and min(freeway_dist, expressway_dist) < VD_MATCH_DISTANCE_M:
-      live_road = 'expressway' if use_expressway else 'freeway'
-    worker.observe_live_road(live_road, current_time)
-    if use_expressway:
-      matcher, client, lane_client = provincial_matcher, worker.expressway_client, worker.expressway_lanes
-      raw_current_section = expressway_id
-    else:
-      client, lane_client = worker.client, worker.lanes
-      raw_current_section = freeway_id
+      worker.active_road = road
+    matched_live_road = lane_gps_ok and distance < VD_MATCH_DISTANCE_M
+    if matched_live_road and not stopped_fix:
+      last_matched_fix = (lat, lon, bearing)
+    elif lane_gps_ok and not stopped_fix:
+      last_matched_fix = None
+    worker.observe_live_road(road if matched_live_road else None, current_time)
     my_direction = bearing_to_direction(bearing)
 
     if raw_current_section is not None:
@@ -927,17 +953,28 @@ def main():
     curr_speed = speed_snapshot.get(str(stable_current_section).strip(), -1) if stable_current_section else -1
     ahead_speed = speed_snapshot.get(str(stable_ahead_section).strip(), -1) if stable_ahead_section else -1
 
+    display_ahead_section = stable_ahead_section
+    if road == 'taipei' and ahead_speed <= 0 < curr_speed:
+      ahead_speed = curr_speed
+      display_ahead_section = stable_current_section
+
     tdx.sectionId = str(stable_current_section) if stable_current_section else ""
     tdx.speed = int(curr_speed)
-    tdx.nextSectionId = str(stable_ahead_section) if stable_ahead_section else ""
+    tdx.nextSectionId = str(display_ahead_section) if display_ahead_section else ""
     tdx.nextSpeed = int(ahead_speed)
-    if use_expressway and lane_gps_ok and raw_current_section is not None:
+    if road != 'freeway' and lane_gps_ok and raw_current_section is not None:
       tdx.laneRoadLabel = matcher.sections[raw_current_section]['road_name']
 
     reading = lane_client.find_ahead(matcher, raw_current_section, lat, lon, bearing) if lane_gps_ok else None
-    if reading is not None:
-      distance, collected, lanes, road_label = reading
-      tdx.laneDistanceM = distance
+    lane_display = freeway_lanes.hold_lane_reading(
+      lane_display, reading, (road, raw_current_section or stable_current_section),
+      current_time, time.time(),  # noqa: TID251 - lane feed uses Unix time
+      max_age=urban_roads.MAX_AGE_S if road == 'taipei' else freeway_lanes.MAX_AGE_S,
+    )
+    if lane_display is not None:
+      _, (distance, collected, lanes, road_label), _ = lane_display
+      tdx.laneDistanceM = max(0, distance)
+      tdx.lanePassedDistanceM = max(0, -distance)
       tdx.laneCollectedAt = collected
       tdx.laneRoadLabel = road_label
       lane_speeds = tdx.init('laneSpeeds', len(lanes))
@@ -962,7 +999,7 @@ def main():
 
     for evt in client.cached_events:
       evt_sid = evt.get('SectionID', '')
-      if use_expressway and (raw_current_section is None or matcher.sections.get(evt_sid, {}).get('route')
+      if road == 'expressway' and (raw_current_section is None or matcher.sections.get(evt_sid, {}).get('route')
                              != matcher.sections[raw_current_section]['route']):
         continue
       evt_item = (_parse_event_type(evt.get('EventType', '0')), evt['Description'])

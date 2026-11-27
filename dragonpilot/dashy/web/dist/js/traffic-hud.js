@@ -6,6 +6,14 @@
   const MAX_DROP_AHEAD_KPH = 60;
   const congestionLabels = { smooth: '順暢', slow: '緩慢', congested: '壅塞' };
 
+  function formatLaneAge(collectedAt, now) {
+    const seconds = Math.floor(now / 1000 - collectedAt);
+    if (!Number.isFinite(seconds) || seconds < 0) return '';
+    const minutes = Math.floor(seconds / 60);
+    const detail = minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
+    return `採集於 ${detail}前`;
+  }
+
   function getDisplay(sm, now = Date.now()) {
     const traffic = sm?.tdx;
     const received = Number(sm?.recv_time?.tdx) * 1000;
@@ -29,6 +37,7 @@
     }
     const lanes = Array.isArray(traffic.laneSpeeds)
       ? traffic.laneSpeeds.filter(lane => lane.speed != null) : [];
+    const stationPosition = traffic.laneStationPassed ? '已通過測站' : '前方';
     const hasLanes = Number.isFinite(traffic.laneDistanceM) && traffic.laneDistanceM >= 0
       && traffic.laneCollectedAt > 0 && lanes.length > 0;
     if (!speed && !descriptions.length && !hasLanes) return null;
@@ -41,9 +50,10 @@
       speedDrop: hasSpeedDrop ? `前方車流驟降 ${traffic.displayCurrentSpeed} → ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '',
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
-      laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
+      laneAge: hasLanes ? formatLaneAge(traffic.laneCollectedAt, now) : '',
+      laneCaption: hasLanes ? `車速：${lanes.length} 道（左 → 右） · ${traffic.speedUnit}` : '',
       distance: hasLanes ? (traffic.laneDistanceM < 1000
-        ? `前方 ${traffic.laneDistanceM} m` : `前方 ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
+        ? `${stationPosition} ${traffic.laneDistanceM} m` : `${stationPosition} ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
       congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',
     };
   }
@@ -88,7 +98,9 @@
   laneList.className = 'traffic-hud-lane-list';
   const laneRoad = document.createElement('div');
   laneRoad.className = 'traffic-hud-lane-road';
-  lanePanel.append(laneHeader, laneList);
+  const laneAge = document.createElement('div');
+  laneAge.className = 'traffic-hud-lane-age';
+  lanePanel.append(laneHeader, laneList, laneAge);
   panel.append(speedLine, eventLine, dropLine, laneRoad, lanePanel);
   host.appendChild(panel);
 
@@ -117,6 +129,8 @@
     if (lanePanel.hidden) return;
     laneTitle.textContent = display.laneCaption;
     laneDistance.textContent = display.distance;
+    laneAge.textContent = display.laneAge;
+    laneAge.hidden = !display.laneAge;
     const key = JSON.stringify(display.lanes);
     if (key === renderedLanes) return;
     renderedLanes = key;

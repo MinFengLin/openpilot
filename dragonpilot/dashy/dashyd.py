@@ -407,6 +407,7 @@ def extract_tdx(sm, started_frame=0):
     current_speed = int(tdx.speed)
     next_speed = int(tdx.nextSpeed)
     speed_available = 0 < next_speed <= 150
+    passed_distance = int(getattr(tdx, 'lanePassedDistanceM', 0))
     return {
         'sectionId': str(tdx.sectionId),
         'nextSectionId': str(tdx.nextSectionId),
@@ -416,7 +417,8 @@ def extract_tdx(sm, started_frame=0):
         'congestion': str(tdx.congestion),
         'displayNextSpeed': format_speed(next_speed / Conversions.MS_TO_KPH) if speed_available else None,
         'speedUnit': get_speed_unit(),
-        'laneDistanceM': int(getattr(tdx, 'laneDistanceM', 0)),
+        'laneDistanceM': passed_distance or int(getattr(tdx, 'laneDistanceM', 0)),
+        'laneStationPassed': passed_distance > 0,
         'laneCollectedAt': int(getattr(tdx, 'laneCollectedAt', 0)),
         'laneRoadLabel': str(getattr(tdx, 'laneRoadLabel', '')),
         'laneSpeeds': [
