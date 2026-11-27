@@ -51,7 +51,7 @@
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
       laneAge: hasLanes ? formatLaneAge(traffic.laneCollectedAt, now) : '',
-      laneCaption: hasLanes ? `車速：${lanes.length} 道（左 → 右） · ${traffic.speedUnit}` : '',
+      laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
       distance: hasLanes && traffic.laneDistanceM > 0 ? (traffic.laneDistanceM < 1000
         ? `${stationPosition} ${traffic.laneDistanceM} m` : `${stationPosition} ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
       congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',

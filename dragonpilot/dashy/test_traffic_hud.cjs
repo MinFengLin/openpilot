@@ -49,7 +49,7 @@ test('lane-only data shows distance and omits missing lanes', () => {
   Object.assign(sm.tdx, { nextSpeed: -1, events: [], laneDistanceM: 1800, laneCollectedAt: 1, laneRoadLabel: '國一・汐五高架',
     laneSpeeds: [{ laneId: 0, speed: '92' }, { laneId: 1, speed: null }, { laneId: 2, speed: '0' }] });
   const display = getDisplay(sm, now);
-  assert.equal(display.laneCaption, '車速：2 道（左 → 右） · km/h');
+  assert.equal(display.laneCaption, '車道（左 → 右） · km/h');
   assert.equal(display.distance, '前方 1.8 km');
   Object.assign(sm.tdx, {laneStationPassed: true, laneDistanceM: 300});
   assert.equal(getDisplay(sm, now).distance, '已通過測站 300 m');
