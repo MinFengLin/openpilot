@@ -8,6 +8,9 @@
   pointer-events: none;
   z-index: 11;
 }
+#hud-page-content:has(> #road-info-hud:not([hidden])) #hud-left-stack {
+  right: calc(max(12px, env(safe-area-inset-right)) + clamp(84px, 12vw, 160px) + 12px);
+}
 #hud-left-stack > #traffic-hud {
   position: relative;
   inset: auto;

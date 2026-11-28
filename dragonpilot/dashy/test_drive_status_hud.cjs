@@ -42,12 +42,15 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
     constructor() { this.children = []; this.hidden = false; this.dataset = {}; this.textContent = ''; this.attributes = {}; }
     append(...items) { this.children.push(...items); }
     appendChild(item) { this.children.push(item); }
+    prepend(item) { this.children.unshift(item); }
     replaceChildren(...items) { this.children = items; }
     setAttribute(key, value) { this.attributes[key] = value; }
     addEventListener() {}
     getClientRects() { return [{}]; }
   }
   const host = new Element(); const page = new Element(); const sm = state();
+  const traffic = new Element();
+  host.appendChild(traffic);
   sm.recv_time.driveStatus = Date.now() / 1000;
   let tick;
   const dom = {window: {sm, setInterval: fn => {tick = fn;}, addEventListener() {}},
@@ -56,6 +59,7 @@ test('DOM creates SVG badges and clears on a disconnected stream', () => {
     getComputedStyle: () => ({visibility: 'visible'})};
   vm.runInNewContext(source, dom);
   const panel = host.children[0]; const row = panel.children[0];
+  assert.equal(host.children[1], traffic);
   assert.equal(panel.children.length, 1);
   assert.equal(panel.hidden, false); assert.equal(row.children.length, 1);
   assert.equal(row.children[0].children[0].children[0].children.length, 10);

@@ -24,12 +24,15 @@
   }
   window.DashyDriveStatus = { getDisplay };
   if (typeof document === 'undefined') return;
-  const host = document.getElementById('hud-left-stack') || document.getElementById('hud-page-content');
+  const stack = document.getElementById('hud-left-stack');
+  const host = stack || document.getElementById('hud-page-content');
   if (!host) return;
   const panel = document.createElement('div');
   panel.id = 'drive-status'; panel.hidden = true;
   const row = document.createElement('div'); row.className = 'drive-status-badges';
-  panel.appendChild(row); host.appendChild(panel);
+  panel.appendChild(row);
+  if (stack) stack.prepend(panel);
+  else host.appendChild(panel);
   const svgNS = 'http://www.w3.org/2000/svg';
   function makeCluster(badges) {
     const [lane, follow] = badges;
