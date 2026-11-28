@@ -109,6 +109,8 @@ struct Tdx @0xf98d843bfd7004a3 {
   laneRoadLabel @9 :Text;        # 路況對應的道路名稱
   lanePassedDistanceM @10 :UInt32; # 已通過測站的距離，0 = 使用前方測站
 
+  laneFromCache @11 :Bool;      # 暫無新車道資料，沿用同方向道路的上一筆
+
   struct LaneSpeed {
     laneId @0 :UInt8;
     speed @1 :Int16 = -1;        # km/h，-1 = 無資料

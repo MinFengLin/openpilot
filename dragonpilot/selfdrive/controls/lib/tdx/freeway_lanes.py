@@ -159,13 +159,12 @@ def select_lane_station(sections, routes, readings, section_id, fraction, now):
   return nearest_ahead if nearest_ahead is not None else nearest_passed
 
 
-def hold_lane_reading(previous, reading, section_key, now, wall_time, hold_seconds=3, max_age=MAX_AGE_S):
-  """Keep a recent, still fresh measurement through a short loss on the same section."""
+def lane_display_for_average(previous, reading, road_key, average_available):
+  """Keep one last reading while the same road has a displayed average."""
+  if not average_available or road_key is None:
+    return None, False
   if reading is not None:
-    return section_key, reading, now
-  if previous is not None:
-    section, held, received = previous
-    if (section == section_key and 0 <= now - received <= hold_seconds
-        and 0 <= wall_time - held[1] <= max_age):
-      return previous
-  return None
+    return (road_key, reading), False
+  if previous is not None and previous[0] == road_key:
+    return previous, True
+  return None, False

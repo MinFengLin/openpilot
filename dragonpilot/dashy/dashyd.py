@@ -419,6 +419,7 @@ def extract_tdx(sm, started_frame=0):
         'speedUnit': get_speed_unit(),
         'laneDistanceM': passed_distance or int(getattr(tdx, 'laneDistanceM', 0)),
         'laneStationPassed': passed_distance > 0,
+        'laneFromCache': bool(getattr(tdx, 'laneFromCache', False)),
         'laneCollectedAt': int(getattr(tdx, 'laneCollectedAt', 0)),
         'laneRoadLabel': str(getattr(tdx, 'laneRoadLabel', '')),
         'laneSpeeds': [

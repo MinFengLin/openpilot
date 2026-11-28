@@ -67,6 +67,9 @@ class TestTdxExtraction(unittest.TestCase):
         self.assertEqual(result['laneDistanceM'], 80000)
         self.assertTrue(result['laneStationPassed'])
         self.assertEqual(result['laneCollectedAt'], 1795618320)
+        self.assertFalse(result['laneFromCache'])
+        sm['tdx'].laneFromCache = True
+        self.assertTrue(self.extract(sm)['laneFromCache'])
         self.assertEqual(result['laneSpeeds'], [
             {'laneId': 0, 'speed': '62'}, {'laneId': 1, 'speed': None}, {'laneId': 2, 'speed': '0'},
         ])
@@ -112,14 +115,18 @@ class TestFreewayLaneSelection(unittest.TestCase):
         speeds['ahead', 'n'] = ahead
         self.assertEqual(lookup(sections, routes, speeds, 'section', .5, 1030), (400, *ahead))
 
-    def test_holds_lane_values_only_briefly_on_same_section(self):
+    def test_holds_last_lane_values_while_same_direction_has_average(self):
         reading = (250, 1000, ((0, 85), (1, 72)), '國一・平面')
-        key = (False, 'section')
-        stored = freeway_lanes.hold_lane_reading(None, reading, key, 10, 1010)
-        self.assertEqual(freeway_lanes.hold_lane_reading(stored, None, key, 12, 1012), stored)
-        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, key, 13.1, 1013))
-        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, (True, 'section'), 12, 1012))
-        self.assertIsNone(freeway_lanes.hold_lane_reading(stored, None, key, 12, 1181))
+        key = ('freeway', ('000010', 'N'))
+        select = freeway_lanes.lane_display_for_average
+        stored, cached = select(None, reading, key, True)
+        self.assertFalse(cached)
+        self.assertEqual(select(stored, None, key, True), (stored, True))
+        self.assertEqual(select(stored, None, ('freeway', ('000010', 'S')), True), (None, False))
+        self.assertEqual(select(stored, None, ('freeway', ('00001A', 'N')), True), (None, False))
+        self.assertEqual(select(stored, None, key, False), (None, False))
+        updated = (300, 1300, ((0, 64),), '國一・平面')
+        self.assertEqual(select(stored, updated, key, True), ((key, updated), False))
 
     def test_city_station_walks_directional_sections_and_prefers_ahead(self):
         matcher = SimpleNamespace(sections={sid: {'total_length': 1000} for sid in ('a', 'b', 'c')},

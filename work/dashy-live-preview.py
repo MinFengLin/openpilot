@@ -24,6 +24,7 @@ PREVIEW_CONTROLS = """
     <option value="elevated">國一・汐五高架</option>
     <option value="expressway">台64線</option>
     <option value="combined-warning">前方事件＋車流驟降</option>
+    <option value="lane-cache">車道資料暫未更新</option>
     <option value="long-event">長事件</option>
     <option value="speed-drop">車流驟降</option>
     <option value="no-traffic">無即時路況</option>
@@ -44,7 +45,7 @@ SCENARIOS = {
   'elevated': ('國一・汐五高架', '汐五高架', 90, 89, 87, 420, [102, 105]),
   'expressway': ('台64線', '台64線', 80, 76, 65, 155, [62, 70]),
 }
-EXTRA_SCENARIOS = {'no-traffic', 'no-lead', 'alert', 'speed-drop', 'combined-warning', 'long-event'}
+EXTRA_SCENARIOS = {'no-traffic', 'no-lead', 'alert', 'speed-drop', 'combined-warning', 'long-event', 'lane-cache'}
 PREVIEW_START = time.time()
 X = list(range(2, 162, 5))
 
@@ -57,6 +58,11 @@ def telemetry(scenario, elapsed):
   label, road, limit, speed, traffic, distance, lanes = SCENARIOS.get(scenario, SCENARIOS['freeway'])
   now = time.time()
   collected = PREVIEW_START - 15 + 60 * int((now - PREVIEW_START) // 60)
+  lane_from_cache = scenario == 'lane-cache' and elapsed >= 5
+  if scenario == 'lane-cache':
+    collected = PREVIEW_START - 15
+    if lane_from_cache:
+      distance = 0
   if scenario == 'taipei':
     distance = max(0, 125 - int(elapsed * speed / 3.6))
   lead_detected = scenario != 'no-lead'
@@ -98,6 +104,7 @@ def telemetry(scenario, elapsed):
       'speed': speed, 'displayCurrentSpeed': str(speed), 'nextSpeed': traffic, 'displayNextSpeed': str(traffic), 'speedUnit': 'km/h',
       'congestion': 'smooth' if traffic >= 80 else 'slow',
       'laneRoadLabel': label, 'laneDistanceM': distance, 'laneCollectedAt': int(collected),
+      'laneFromCache': lane_from_cache,
       'laneSpeeds': [{'laneId': i, 'speed': str(value)} for i, value in enumerate(lanes)],
       'events': events,
     },

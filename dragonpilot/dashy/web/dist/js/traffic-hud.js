@@ -48,7 +48,7 @@
     const lanes = Array.isArray(traffic.laneSpeeds)
       ? traffic.laneSpeeds.filter(lane => lane.speed != null) : [];
     const stationPosition = traffic.laneStationPassed ? '已通過測站' : '前方';
-    const hasLanes = Number.isFinite(traffic.laneDistanceM) && traffic.laneDistanceM >= 0
+    const hasLanes = hasSpeed && Number.isFinite(traffic.laneDistanceM) && traffic.laneDistanceM >= 0
       && traffic.laneCollectedAt > 0 && lanes.length > 0;
     if (!speed && !descriptions.length && !hasLanes) return null;
     return {
@@ -61,12 +61,13 @@
       speedDrop: hasSpeedDrop ? `前方車流驟降 ${traffic.displayCurrentSpeed} → ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '',
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
+      laneFromCache: hasLanes && traffic.laneFromCache,
       laneSample: hasLanes ? {
         key: JSON.stringify([traffic.laneRoadLabel, traffic.laneCollectedAt, traffic.laneSpeeds]),
         received,
       } : null,
       laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
-      distance: hasLanes && traffic.laneDistanceM > 0 ? (traffic.laneDistanceM < 1000
+      distance: hasLanes && !traffic.laneFromCache && traffic.laneDistanceM > 0 ? (traffic.laneDistanceM < 1000
         ? `${stationPosition} ${traffic.laneDistanceM} m` : `${stationPosition} ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
       congestion: hasSpeed && congestion ? traffic.congestion : 'unknown',
     };
@@ -147,7 +148,8 @@
     laneTitle.textContent = display.laneCaption;
     laneDistance.textContent = display.distance;
     laneDistance.hidden = !display.distance;
-    laneAge.textContent = laneTimer(display.laneSample, now);
+    const age = laneTimer(display.laneSample, now);
+    laneAge.textContent = display.laneFromCache ? `上次車道資料 · ${age}` : age;
     const key = JSON.stringify(display.lanes);
     if (key === renderedLanes) return;
     renderedLanes = key;

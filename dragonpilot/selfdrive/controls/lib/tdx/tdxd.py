@@ -966,15 +966,25 @@ def main():
       tdx.laneRoadLabel = matcher.sections[raw_current_section]['road_name']
 
     reading = lane_client.find_ahead(matcher, raw_current_section, lat, lon, bearing) if lane_gps_ok else None
-    lane_display = freeway_lanes.hold_lane_reading(
-      lane_display, reading, (road, raw_current_section or stable_current_section),
-      current_time, time.time(),  # noqa: TID251 - lane feed uses Unix time
-      max_age=urban_roads.MAX_AGE_S if road == 'taipei' else freeway_lanes.MAX_AGE_S,
+    section = matcher.sections.get(stable_current_section)
+    road_key = None
+    if section is not None:
+      if road == 'taipei':
+        route = (section['route'], my_direction)
+      else:
+        route, _, _ = lane_client.snapshot[0].get(stable_current_section, (None, None, None))
+      if route and all(route):
+        road_key = (road, route)
+
+    lane_display, lane_from_cache = freeway_lanes.lane_display_for_average(
+      lane_display, reading, road_key, 0 < ahead_speed <= 150,
     )
     if lane_display is not None:
-      _, (distance, collected, lanes, road_label), _ = lane_display
-      tdx.laneDistanceM = max(0, distance)
-      tdx.lanePassedDistanceM = max(0, -distance)
+      _, (distance, collected, lanes, road_label) = lane_display
+      tdx.laneFromCache = lane_from_cache
+      if not lane_from_cache:
+        tdx.laneDistanceM = max(0, distance)
+        tdx.lanePassedDistanceM = max(0, -distance)
       tdx.laneCollectedAt = collected
       tdx.laneRoadLabel = road_label
       lane_speeds = tdx.init('laneSpeeds', len(lanes))
