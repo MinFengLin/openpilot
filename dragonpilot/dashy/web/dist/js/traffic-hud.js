@@ -6,12 +6,20 @@
   const MAX_DROP_AHEAD_KPH = 60;
   const congestionLabels = { smooth: '順暢', slow: '緩慢', congested: '壅塞' };
 
-  function formatLaneAge(collectedAt, now) {
-    const seconds = Math.floor(now / 1000 - collectedAt);
-    if (!Number.isFinite(seconds) || seconds < 0) return '';
-    const minutes = Math.floor(seconds / 60);
-    const detail = minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
-    return `收集於 ${detail}前`;
+  function createLaneTimer() {
+    let sampleKey;
+    let firstReceived;
+    return (sample, now) => {
+      if (!sample) return '';
+      if (sample.key !== sampleKey) {
+        sampleKey = sample.key;
+        firstReceived = sample.received;
+      }
+      const seconds = Math.floor(Math.max(0, now - firstReceived) / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const detail = minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
+      return `收到後 ${detail}`;
+    };
   }
 
   function getDisplay(sm, now = Date.now()) {
@@ -53,7 +61,10 @@
       speedDrop: hasSpeedDrop ? `前方車流驟降 ${traffic.displayCurrentSpeed} → ${traffic.displayNextSpeed} ${traffic.speedUnit}` : '',
       lanes: hasLanes ? lanes : [],
       laneRoadLabel: traffic.laneRoadLabel || '',
-      laneAge: hasLanes ? formatLaneAge(traffic.laneCollectedAt, now) : '',
+      laneSample: hasLanes ? {
+        key: JSON.stringify([traffic.laneRoadLabel, traffic.laneCollectedAt, traffic.laneSpeeds]),
+        received,
+      } : null,
       laneCaption: hasLanes ? `車道（左 → 右） · ${traffic.speedUnit}` : '',
       distance: hasLanes && traffic.laneDistanceM > 0 ? (traffic.laneDistanceM < 1000
         ? `${stationPosition} ${traffic.laneDistanceM} m` : `${stationPosition} ${(traffic.laneDistanceM / 1000).toFixed(1)} km`) : '',
@@ -67,7 +78,7 @@
   }
 
   // Expose pure formatting for diagnostics and tests without the vehicle/UI runtime.
-  window.DashyTraffic = { getDisplay, getScrollMetrics };
+  window.DashyTraffic = { getDisplay, getScrollMetrics, createLaneTimer };
   if (typeof document === 'undefined') return;
 
   const host = document.getElementById('hud-left-stack') || document.getElementById('hud-page-content');
@@ -128,15 +139,15 @@
     eventText.classList.toggle('traffic-hud-scroll', overflow > 1);
   }
 
+  const laneTimer = createLaneTimer();
   let renderedLanes = '';
-  function updateLanes(display) {
+  function updateLanes(display, now) {
     lanePanel.hidden = !display?.lanes.length;
     if (lanePanel.hidden) return;
     laneTitle.textContent = display.laneCaption;
     laneDistance.textContent = display.distance;
     laneDistance.hidden = !display.distance;
-    laneAge.textContent = display.laneAge;
-    laneAge.hidden = !display.laneAge;
+    laneAge.textContent = laneTimer(display.laneSample, now);
     const key = JSON.stringify(display.lanes);
     if (key === renderedLanes) return;
     renderedLanes = key;
@@ -154,14 +165,15 @@
     const page = document.getElementById('hud-page');
     const alertSize = window.sm?.selfdriveState?.alertSize;
     const alertVisible = Boolean(alertSize && alertSize !== 'none');
+    const now = Date.now();
     const display = !alertVisible && !document.hidden && page && page.getClientRects().length
-      && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm) : null;
+      && getComputedStyle(page).visibility !== 'hidden' ? getDisplay(window.sm, now) : null;
     panel.hidden = !display;
     dropLine.textContent = display?.speedDrop || '';
     dropLine.hidden = !display?.speedDrop;
     laneRoad.textContent = display?.laneRoadLabel || '';
     laneRoad.hidden = !display?.laneRoadLabel;
-    updateLanes(display);
+    updateLanes(display, now);
     if (!display) {
       clearEvent();
       return;

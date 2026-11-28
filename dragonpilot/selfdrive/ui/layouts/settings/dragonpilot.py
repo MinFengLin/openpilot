@@ -16,6 +16,10 @@
 
 import ast
 import os
+import time
+from threading import Thread
+
+import requests
 
 from openpilot.system.ui.widgets import Widget, DialogResult
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -27,7 +31,7 @@ from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from dragonpilot.mapd import region_key, regions
-from dragonpilot.selfdrive.controls.lib.tdx.tdx_auth import CREDENTIALS_PARAM, read_credential_fields
+from dragonpilot.selfdrive.controls.lib.tdx.tdx_auth import CREDENTIALS_PARAM, TdxRateLimited, access_token, read_credential_fields, read_credentials
 from openpilot.system.hardware import HARDWARE
 from dragonpilot.settings import SETTINGS, extract_depends_on_refs
 
@@ -354,6 +358,55 @@ class DragonpilotLayout(Widget):
         title, lambda field=field: tr('已儲存' if field in read_credential_fields(ui_state.params) else '設定'),
         lambda field=field: tr('變更 Client ID 後需重新輸入 Secret' if field == 'client_id' else '輸入時會遮蔽'),
         callback=lambda field=field, title=title: edit_field(field, title), enabled=ui_state.is_offroad)
+    verification = None
+    checked_credentials = None
+    verification_result = None
+    retry_at = 0.0
+
+    def can_verify():
+      return (ui_state.is_offroad() and read_credentials(ui_state.params) is not None
+              and (verification is None or not verification.is_alive()) and time.monotonic() >= retry_at)
+
+    def verify_credentials():
+      nonlocal verification, checked_credentials, verification_result
+      if not can_verify():
+        return
+      credentials = read_credentials(ui_state.params)
+      if credentials is None:
+        return
+      checked_credentials = credentials
+      verification_result = None
+
+      def verify():
+        nonlocal verification_result, retry_at
+        try:
+          access_token(*credentials, timeout=(3, 5))
+          verification_result = '金鑰正確，TDX 已核發存取權杖。'
+        except TdxRateLimited as error:
+          retry_at = time.monotonic() + error.retry_seconds
+          verification_result = 'TDX 暫時限制請求，請稍後再試。'
+        except requests.RequestException:
+          verification_result = '無法連線到 TDX，請稍後再試。'
+        except ValueError:
+          verification_result = 'TDX 未核發權杖，請確認金鑰與啟用狀態。'
+
+      verification = Thread(target=verify, daemon=True)
+      verification.start()
+
+    def verification_status():
+      credentials = read_credentials(ui_state.params)
+      if credentials is None:
+        return tr('請先設定 Client ID 和 Client Secret。')
+      if verification is not None and verification.is_alive():
+        return tr('正在向 TDX 驗證…')
+      if credentials == checked_credentials and verification_result is not None:
+        return tr(verification_result)
+      return tr('驗證車機已儲存的 TDX API 金鑰。')
+
+    self._toggles['tdx_verify'] = button_item(
+      lambda: tr('驗證 TDX API 金鑰'), lambda: tr('驗證'),
+      callback=verify_credentials, enabled=can_verify)
+    self._toggles['tdx_verify_status'] = simple_item(verification_status)
     self._toggles['tdx_clear'] = button_item(
       lambda: tr('清除 TDX API 金鑰'), lambda: tr('清除'),
       callback=clear_credentials, enabled=lambda: ui_state.is_offroad() and bool(read_credential_fields(ui_state.params)))

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 const sandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'web/dist/js/traffic-hud.js'), 'utf8'), sandbox);
-const { getDisplay } = sandbox.window.DashyTraffic;
+const { getDisplay, createLaneTimer } = sandbox.window.DashyTraffic;
 const { getScrollMetrics } = sandbox.window.DashyTraffic;
 const now = 10000;
 function state() {
@@ -63,20 +63,23 @@ test('lane-only data shows distance and omits missing lanes', () => {
   assert.equal(getDisplay(sm, now), null);
 });
 
-test('lane sample age advances and resets when the same station publishes again', () => {
+test('lane timer starts at receipt and ignores repeated frames for the same sample', () => {
   const sm = state();
-  Object.assign(sm.tdx, { laneDistanceM: 1200, laneStationPassed: true,
-    laneCollectedAt: 930, laneSpeeds: [{ laneId: 0, speed: '20' }] });
+  const timer = createLaneTimer();
+  Object.assign(sm.tdx, {laneDistanceM: 1200, laneStationPassed: true,
+    laneCollectedAt: 930, laneSpeeds: [{laneId: 0, speed: '20'}]});
   sm.recv_time.tdx = 1000;
-  assert.equal(getDisplay(sm, 1000000).laneAge, '收集於 1 分 10 秒前');
-  assert.equal(getDisplay(sm, 1003000).laneAge, '收集於 1 分 13 秒前');
+  assert.equal(timer(getDisplay(sm, 1000000).laneSample, 1000000), '收到後 0 秒');
+  sm.recv_time.tdx = 1002;
+  assert.equal(timer(getDisplay(sm, 1003000).laneSample, 1003000), '收到後 3 秒');
   Object.assign(sm.tdx, {laneDistanceM: 0, laneStationPassed: false});
   const atStation = getDisplay(sm, 1003000);
   assert.equal(atStation.distance, '');
   assert.equal(atStation.lanes.length, 1);
-  assert.equal(atStation.laneAge, '收集於 1 分 13 秒前');
-  sm.tdx.laneCollectedAt = 1001;
-  assert.equal(getDisplay(sm, 1003000).laneAge, '收集於 2 秒前');
+  assert.equal(timer(atStation.laneSample, 1003000), '收到後 3 秒');
+  sm.tdx.laneCollectedAt = 940;
+  sm.recv_time.tdx = 1003;
+  assert.equal(timer(getDisplay(sm, 1003000).laneSample, 1003000), '收到後 0 秒');
 });
 
 test('speed drop needs a distinct ahead section and a substantial drop in raw km/h', () => {
